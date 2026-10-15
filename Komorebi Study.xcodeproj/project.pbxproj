@@ -1,0 +1,43 @@
+// !$*UTF8*$!
+{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
+E51CC8ACFDEC61EB0ACED391 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Components/Style.swift"; sourceTree = SOURCE_ROOT; };
+14BF92726FB25B155A52FEBD = { isa = PBXBuildFile; fileRef = E51CC8ACFDEC61EB0ACED391; };
+6E64D35FF0F2410E1FDC00EE = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/KomorebiApp.swift"; sourceTree = SOURCE_ROOT; };
+FB796A71FE8520D0163D0305 = { isa = PBXBuildFile; fileRef = 6E64D35FF0F2410E1FDC00EE; };
+CE7BE0B0F2A9697CE94A207E = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Models/Models.swift"; sourceTree = SOURCE_ROOT; };
+FB49B3604AE1AFA66B775FB3 = { isa = PBXBuildFile; fileRef = CE7BE0B0F2A9697CE94A207E; };
+448B7712999BA6A7EFA17B44 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Services/AmbientAudio.swift"; sourceTree = SOURCE_ROOT; };
+D78671D21E8C296F6AE3F820 = { isa = PBXBuildFile; fileRef = 448B7712999BA6A7EFA17B44; };
+0A9CCECA71B3DFE2AE35C4E2 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Services/BackupService.swift"; sourceTree = SOURCE_ROOT; };
+CF16FD0978BD7A8CA7DB2CF5 = { isa = PBXBuildFile; fileRef = 0A9CCECA71B3DFE2AE35C4E2; };
+C6C8CB3A3B23A4B7EA47796F = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Services/StudyStore.swift"; sourceTree = SOURCE_ROOT; };
+E4D28884A822A0B19B344F41 = { isa = PBXBuildFile; fileRef = C6C8CB3A3B23A4B7EA47796F; };
+C880594898E782BBAA3F1360 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Views/CalendarView.swift"; sourceTree = SOURCE_ROOT; };
+6182728BA31B9E25D39A43D4 = { isa = PBXBuildFile; fileRef = C880594898E782BBAA3F1360; };
+35C4F926A024A7AA3CBF9A04 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Views/HistoryView.swift"; sourceTree = SOURCE_ROOT; };
+75541C1B3C2F1D5C96BC7025 = { isa = PBXBuildFile; fileRef = 35C4F926A024A7AA3CBF9A04; };
+F87D2F60489F7529DBE0E14D = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Views/RootView.swift"; sourceTree = SOURCE_ROOT; };
+8AF4A05660C0FF44498F5F97 = { isa = PBXBuildFile; fileRef = F87D2F60489F7529DBE0E14D; };
+AA5A4FE7BF4EAACB87E3F549 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Views/SettingsView.swift"; sourceTree = SOURCE_ROOT; };
+FB29149C8173861ED1235FC8 = { isa = PBXBuildFile; fileRef = AA5A4FE7BF4EAACB87E3F549; };
+897C0FD2C93B7C83983929B9 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Views/StatisticsView.swift"; sourceTree = SOURCE_ROOT; };
+3E1335B0ECE05F29AA193B5A = { isa = PBXBuildFile; fileRef = 897C0FD2C93B7C83983929B9; };
+878FF0E3CBCB163FFDAE385B = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/Views/SubjectsView.swift"; sourceTree = SOURCE_ROOT; };
+65995BF36FE9976DB1D6B894 = { isa = PBXBuildFile; fileRef = 878FF0E3CBCB163FFDAE385B; };
+F5BF48AA40CAD7891EB709FC = { isa = PBXFileReference; explicitFileType = wrapper.application; path = "Komorebi Study.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+DB0F6F37EBEB6EA094891243 = { isa = PBXGroup; children = (E51CC8ACFDEC61EB0ACED391,6E64D35FF0F2410E1FDC00EE,CE7BE0B0F2A9697CE94A207E,448B7712999BA6A7EFA17B44,0A9CCECA71B3DFE2AE35C4E2,C6C8CB3A3B23A4B7EA47796F,C880594898E782BBAA3F1360,35C4F926A024A7AA3CBF9A04,F87D2F60489F7529DBE0E14D,AA5A4FE7BF4EAACB87E3F549,897C0FD2C93B7C83983929B9,878FF0E3CBCB163FFDAE385B,86024CAD1E83101D97359D73); sourceTree = "<group>"; };
+86024CAD1E83101D97359D73 = { isa = PBXGroup; children = (F5BF48AA40CAD7891EB709FC); name = Products; sourceTree = "<group>"; };
+F2AB5FB218DA8B84623F4557 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (14BF92726FB25B155A52FEBD,FB796A71FE8520D0163D0305,FB49B3604AE1AFA66B775FB3,D78671D21E8C296F6AE3F820,CF16FD0978BD7A8CA7DB2CF5,E4D28884A822A0B19B344F41,6182728BA31B9E25D39A43D4,75541C1B3C2F1D5C96BC7025,8AF4A05660C0FF44498F5F97,FB29149C8173861ED1235FC8,3E1335B0ECE05F29AA193B5A,65995BF36FE9976DB1D6B894); runOnlyForDeploymentPostprocessing = 0; };
+4F6F5CC3FCCF73F75AE9CCF4 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+BAEC6461B0D69DDE1B861AEF = { isa = PBXFileReference; lastKnownFileType = image.icns; path = Resources/AppIcon.icns; sourceTree = SOURCE_ROOT; };
+A3E66519FF80ABE3DDBC91A2 = { isa = PBXBuildFile; fileRef = BAEC6461B0D69DDE1B861AEF; };
+55B558C7EF820E6E00E5993B = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A3E66519FF80ABE3DDBC91A2); runOnlyForDeploymentPostprocessing = 0; };
+59233E4D684FB5A1A72525B8 = { isa = XCBuildConfiguration; buildSettings = { MACOSX_DEPLOYMENT_TARGET = 15.0; SDKROOT = macosx; SWIFT_VERSION = 5.0; ALWAYS_SEARCH_USER_PATHS = NO; ARCHS = arm64; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
+8D5ED1041709BB7FC1DE2B10 = { isa = XCBuildConfiguration; buildSettings = { MACOSX_DEPLOYMENT_TARGET = 15.0; SDKROOT = macosx; SWIFT_VERSION = 5.0; ALWAYS_SEARCH_USER_PATHS = NO; ARCHS = arm64; SWIFT_OPTIMIZATION_LEVEL = "-O"; }; name = Release; };
+927FED1AB2217D3B3EC771F8 = { isa = XCConfigurationList; buildConfigurations = (59233E4D684FB5A1A72525B8,8D5ED1041709BB7FC1DE2B10); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+D8579749783A718541606A67 = { isa = XCBuildConfiguration; buildSettings = { MACOSX_DEPLOYMENT_TARGET = 15.0; SDKROOT = macosx; SWIFT_VERSION = 5.0; ALWAYS_SEARCH_USER_PATHS = NO; ARCHS = arm64; PRODUCT_NAME = "Komorebi Study"; PRODUCT_MODULE_NAME = KomorebiStudy; PRODUCT_BUNDLE_IDENTIFIER = com.komorebi.study; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Resources/Info.plist; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education"; INFOPLIST_KEY_CFBundleIconFile = AppIcon; INFOPLIST_KEY_CFBundleDisplayName = "Komorebi Study"; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 1.0; CODE_SIGN_STYLE = Automatic; CODE_SIGN_IDENTITY = "-"; ENABLE_HARDENED_RUNTIME = YES; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
+553194FECB7E1C4EBBAFB6CE = { isa = XCBuildConfiguration; buildSettings = { MACOSX_DEPLOYMENT_TARGET = 15.0; SDKROOT = macosx; SWIFT_VERSION = 5.0; ALWAYS_SEARCH_USER_PATHS = NO; ARCHS = arm64; PRODUCT_NAME = "Komorebi Study"; PRODUCT_MODULE_NAME = KomorebiStudy; PRODUCT_BUNDLE_IDENTIFIER = com.komorebi.study; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Resources/Info.plist; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education"; INFOPLIST_KEY_CFBundleIconFile = AppIcon; INFOPLIST_KEY_CFBundleDisplayName = "Komorebi Study"; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 1.0; CODE_SIGN_STYLE = Automatic; CODE_SIGN_IDENTITY = "-"; ENABLE_HARDENED_RUNTIME = YES; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_OPTIMIZATION_LEVEL = "-O"; }; name = Release; };
+7CFCAAA280ADA50A774EA8B7 = { isa = XCConfigurationList; buildConfigurations = (D8579749783A718541606A67,553194FECB7E1C4EBBAFB6CE); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+42AEFBAE01D2DFD981F7DA7D = { isa = PBXNativeTarget; buildConfigurationList = 7CFCAAA280ADA50A774EA8B7; buildPhases = (F2AB5FB218DA8B84623F4557,4F6F5CC3FCCF73F75AE9CCF4,55B558C7EF820E6E00E5993B); buildRules = (); dependencies = (); name = "Komorebi Study"; productName = "Komorebi Study"; productReference = F5BF48AA40CAD7891EB709FC; productType = "com.apple.product-type.application"; };
+46F86FAA6BBF9AC94A7E4595 = { isa = PBXProject; attributes = { LastUpgradeCheck = 1600; }; buildConfigurationList = 927FED1AB2217D3B3EC771F8; compatibilityVersion = "Xcode 14.0"; developmentRegion = it; knownRegions = (it,en,Base); mainGroup = DB0F6F37EBEB6EA094891243; productRefGroup = 86024CAD1E83101D97359D73; projectDirPath = ""; projectRoot = ""; targets = (42AEFBAE01D2DFD981F7DA7D); };
+}; rootObject = 46F86FAA6BBF9AC94A7E4595; }

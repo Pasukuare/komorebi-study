@@ -1,0 +1,15 @@
+# Build and Package Manager Artifacts
+.build/
+.build-release/
+.swiftpm/
+Dist/
+DerivedData/
+
+# macOS system files
+.DS_Store
+*.swp
+*~
+
+# Xcode user state
+*.xcuserstate
+xcuserdata/
