@@ -7,7 +7,19 @@ import AppKit
     let audio = AmbientAudio()
     let container: ModelContainer
     let context: ModelContext
-    @Published var settings: UserSettings { didSet { settings.sanitize(); persistSettings() } }
+    private var isSanitizing = false
+    @Published var settings: UserSettings {
+        didSet {
+            guard !isSanitizing else { return }
+            let sanitized = settings.sanitized()
+            if sanitized != settings {
+                isSanitizing = true
+                settings = sanitized
+                isSanitizing = false
+            }
+            persistSettings()
+        }
+    }
     @Published var active: ActiveTimer?
     @Published var now = Date()
     @Published var sessions: [StudySession] = []

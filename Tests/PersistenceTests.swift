@@ -83,4 +83,15 @@ extension PersistenceTests {
         XCTAssertNotNil(s.day)
         XCTAssertNotNil(s.week)
     }
+    func testChangingSubjectSettingsDoesNotCrash() throws {
+        let s = try store()
+        let newID = UUID()
+        s.settings.lastSubject = newID
+        XCTAssertEqual(s.settings.lastSubject, newID)
+    }
+    func testStoreSettingsSanitizesInvalidValuesWithoutInfiniteLoop() throws {
+        let s = try store()
+        s.settings.dailyGoal = -10
+        XCTAssertEqual(s.settings.dailyGoal, 3.0)
+    }
 }

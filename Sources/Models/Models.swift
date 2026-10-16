@@ -29,7 +29,7 @@ enum TimerMode: String, Codable, CaseIterable, Identifiable {
         self.id = id; startDate = start; endDate = end; self.duration = duration; self.subjectID = subjectID; self.subjectName = subjectName; timerMode = mode; pauseDuration = pause; self.note = note
     }
 }
-struct UserSettings: Codable {
+struct UserSettings: Codable, Equatable {
     var dailyGoal = 3.0
     var weeklyGoal = 15.0
     var pomodoroDuration = 25.0
@@ -59,6 +59,12 @@ struct UserSettings: Codable {
         customMinutes = customMinutes.isFinite && customMinutes > 0 ? min(1440, max(1, customMinutes)) : 60.0
         customBreak = customBreak.isFinite && customBreak >= 0 ? min(360, max(0, customBreak)) : 0.0
         streakMinutes = streakMinutes.isFinite && streakMinutes > 0 ? min(1440, max(1, streakMinutes)) : 30.0
+    }
+
+    func sanitized() -> UserSettings {
+        var copy = self
+        copy.sanitize()
+        return copy
     }
 }
 struct ActiveTimer: Codable {
