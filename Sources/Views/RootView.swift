@@ -449,9 +449,9 @@ struct OverviewView: View {
                     ThemeSuggestionCard(campaign: campaign, open: openThemeSettings) { store.dismissThemeCampaign(campaign.id) }
                 }
                 ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
+                    EqualHeightCardRow(spacing: DesignSystem.Spacing.lg) {
                         quickStart.frame(minWidth: DesignSystem.PreservedGeometry.points310)
-                        DailyGoalCard().frame(width: DesignSystem.PreservedGeometry.points240)
+                        DailyGoalCard(stretches: true).frame(width: DesignSystem.PreservedGeometry.points240)
                     }
                     VStack(spacing: DesignSystem.Spacing.lg) { quickStart; DailyGoalCard() }
                 }
@@ -464,7 +464,7 @@ struct OverviewView: View {
                     GoalBar(title: "Questa settimana", value: store.liveWeekly, goal: store.settings.weeklyGoal * 3600)
                 }
                 ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
+                    EqualHeightCardRow(spacing: DesignSystem.Spacing.lg) {
                         upcomingCard.frame(minWidth: DesignSystem.PreservedGeometry.points280)
                         recentCard.frame(minWidth: DesignSystem.PreservedGeometry.points280)
                     }
@@ -474,7 +474,7 @@ struct OverviewView: View {
         }.background(appTheme.palette.background)
     }
     var quickStart: some View {
-        Card {
+        Card(stretches: true) {
             SessionStatusPill()
             Text(store.active == nil ? "Da dove ripartiamo?" : store.active?.subjectName ?? "La tua sessione")
                 .font(appTheme.preservedTypography.editorTitle).fixedSize(horizontal: false, vertical: true)
@@ -499,7 +499,7 @@ struct OverviewView: View {
         }
     }
     var upcomingCard: some View {
-        Card {
+        Card(stretches: true) {
             HStack {
                 Text("Prossimi esami").font(appTheme.preservedTypography.homeCardTitle)
                 Spacer()
@@ -513,7 +513,7 @@ struct OverviewView: View {
         }
     }
     var recentCard: some View {
-        Card {
+        Card(stretches: true) {
             Text("Ultime sessioni").font(appTheme.preservedTypography.homeCardTitle)
             if store.sessions.isEmpty { Text("Le tue sessioni appariranno qui, una alla volta.").foregroundStyle(appTheme.palette.textSecondary) }
             ForEach(Array(store.sessions.prefix(2))) { session in SessionRow(session: session) }
@@ -521,19 +521,24 @@ struct OverviewView: View {
     }
 }
 struct DailyGoalCard: View {
+    var stretches = false
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     var goal: Double { store.settings.dailyGoal * 3600 }
     var body: some View {
-        Card {
+        Card(stretches: stretches) {
             HStack { Text("Il tuo obiettivo di oggi").font(appTheme.preservedTypography.headline); Spacer() }
-            ZStack {
+            VStack(spacing: 0) {
+                if stretches { Spacer(minLength: 0) }
+                ZStack {
                 ProgressRing(value: store.liveToday, total: goal)
                 VStack(spacing: DesignSystem.PreservedGeometry.gap5) {
                     Text(durationText(store.liveToday)).font(appTheme.preservedTypography.dailyGoalValue).monospacedDigit()
                     Text("di \(durationText(goal))").font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary)
                 }
             }.frame(width: DesignSystem.PreservedGeometry.points132, height: DesignSystem.PreservedGeometry.points132).frame(maxWidth: .infinity).padding(.vertical, DesignSystem.PreservedGeometry.gap3)
+                if stretches { Spacer(minLength: 0) }
+            }.frame(maxHeight: stretches ? .infinity : nil)
             Text(store.liveToday >= goal ? "Obiettivo raggiunto. Ben fatto." : "Ancora \(durationText(goal - store.liveToday)), al tuo ritmo.")
                 .font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary).frame(maxWidth: .infinity, alignment: .center)
         }

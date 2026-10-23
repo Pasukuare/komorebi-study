@@ -98,7 +98,7 @@ struct StatisticsView: View {
                     Text("\(interval.start.formatted(date: .abbreviated, time: .omitted)) – \(min(store.now, interval.end.addingTimeInterval(-1)).formatted(date: .abbreviated, time: .omitted))").foregroundStyle(appTheme.palette.textSecondary)
                 }
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: DesignSystem.Spacing.md) { keyMetrics }
+                    EqualHeightCardRow(spacing: DesignSystem.Spacing.md) { keyMetrics }
                     VStack(spacing: DesignSystem.Spacing.md) { keyMetrics }
                 }
                 if let previousRange = range.previousComparable {

@@ -493,10 +493,12 @@ struct PastelSegmentedControl<Value: Hashable>: View {
 }
 struct Card<Content: View>: View {
     @Environment(\.studyTheme) private var appTheme
+    var stretches = false
     @ViewBuilder var content: Content
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) { content }.padding(DesignSystem.Spacing.xl)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) { content }
+            .frame(maxWidth: .infinity, maxHeight: stretches ? .infinity : nil, alignment: .topLeading)
+            .padding(DesignSystem.Spacing.xl)
             .background(appTheme.palette.surface, in: RoundedRectangle(cornerRadius: DesignSystem.Radius.card))
             .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.card).stroke(appTheme.palette.border.opacity(appTheme.appearance.opacity0_35)).allowsHitTesting(false))
             .interactiveHover(cornerRadius: DesignSystem.Radius.card, decorative: true)
@@ -507,7 +509,7 @@ struct Metric: View {
     @Environment(\.komorebiMotion) private var motion
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var title: String; var value: String; var icon: String
-    var body: some View { Card { Label(title, systemImage: icon).foregroundStyle(appTheme.palette.textSecondary); Text(value).font(appTheme.typography.title).monospacedDigit().lineLimit(2).minimumScaleFactor(DesignSystem.PreservedGeometry.minimumScale0_8).contentTransition(.numericText()).animation(interfaceAnimation(motion, reduceMotion: reduceMotion), value: value) } }
+    var body: some View { Card(stretches: true) { Label(title, systemImage: icon).foregroundStyle(appTheme.palette.textSecondary); Text(value).font(appTheme.typography.title).monospacedDigit().lineLimit(2).minimumScaleFactor(DesignSystem.PreservedGeometry.minimumScale0_8).contentTransition(.numericText()).animation(interfaceAnimation(motion, reduceMotion: reduceMotion), value: value) } }
 }
 struct GoalBar: View {
     @Environment(\.studyTheme) private var appTheme
@@ -953,5 +955,15 @@ private struct SidebarGhostStyle: ButtonStyle {
                 .animation(animated ? .easeOut(duration: DesignSystem.SidebarToggle.hoverDuration) : nil, value: configuration.isPressed)
         }
         private func resetCursor() { if cursorPushed { NSCursor.pop(); cursorPushed = false } }
+    }
+}
+
+/// Retains HStack width allocation while proposing the tallest intrinsic height to all cards.
+struct EqualHeightCardRow<Content: View>: View {
+    var spacing: CGFloat
+    @ViewBuilder var content: Content
+    var body: some View {
+        HStack(alignment: .top, spacing: spacing) { content }
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
