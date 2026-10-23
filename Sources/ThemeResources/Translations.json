@@ -423,5 +423,10 @@
   "%@ esame": "%@ exam",
   "%@ ora": "%@ hour",
   "%@ minuto": "%@ minute",
-  "La lingua dell’app cambia subito. Alcuni pannelli di macOS richiedono il riavvio dell’app.": "The app language changes immediately. Some macOS panels require restarting the app."
+  "La lingua dell’app cambia subito. Alcuni pannelli di macOS richiedono il riavvio dell’app.": "The app language changes immediately. Some macOS panels require restarting the app.",
+  "Completata": "Completed",
+  "Materia completata": "Subject completed",
+  "Voto (facoltativo)": "Grade (optional)",
+  "Es. 30 e lode, 28/30, Idoneità": "E.g. A, 28/30, Pass",
+  "Voto: %@": "Grade: %@"
 }

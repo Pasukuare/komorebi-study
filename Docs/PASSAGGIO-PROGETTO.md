@@ -1,7 +1,9 @@
 # Komorebi Study — passaggio di progetto
 
-Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 15** (pannello dedicato per modificare le materie).
+Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 16** (materie completate e voto facoltativo).
 Destinatario: sviluppatore o agente incaricato di correggere bug, verificare le prestazioni e continuare lo sviluppo.
+
+La build 16 aggiunge lo stato completata e il voto facoltativo, con attributi opzionali, backup compatibili e test di migrazione sintetica. Vedere `Docs/Materie-completate-build16.md`.
 
 La build 15 apre un editor dedicato con Salva/Annulla dal comando Modifica di ogni materia; creazione e modifica condividono i controlli ma non la bozza. Vedere `Docs/Editor-materie-build15.md` per verifiche e limiti.
 

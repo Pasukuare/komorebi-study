@@ -10,10 +10,12 @@ struct SessionRecord: Codable {
 }
 struct SubjectRecord: Codable {
     var id: UUID; var name: String; var icon: String; var color: String; var weeklyGoal: Double
-    init(_ s: Subject) { id = s.id; name = s.name; icon = s.icon; color = SubjectColorID.canonical(s.color); weeklyGoal = s.weeklyGoal }
+    var completed: Bool? = nil; var grade: String? = nil
+    init(_ s: Subject) { id = s.id; name = s.name; icon = s.icon; color = SubjectColorID.canonical(s.color); weeklyGoal = s.weeklyGoal; completed = s.completed; grade = s.grade }
     var model: Subject {
         let subject = Subject(name: name, icon: icon, color: color, weeklyGoal: weeklyGoal)
         subject.id = id
+        subject.completed = completed; subject.grade = grade
         return subject
     }
 }

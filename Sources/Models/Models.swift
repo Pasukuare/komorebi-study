@@ -38,6 +38,13 @@ enum TimerMode: String, Codable, CaseIterable, Identifiable {
     var icon: String
     var color: String
     var weeklyGoal: Double
+    // Optional storage supports lightweight migration: existing subjects remain unfinished.
+    var completed: Bool? = nil
+    var grade: String? = nil
+    var isCompleted: Bool {
+        get { completed ?? false }
+        set { completed = newValue }
+    }
     init(name: String, icon: String = "leaf", color: String = SubjectColorID.defaultID, weeklyGoal: Double = 5) {
         id = UUID(); self.name = name; self.icon = icon; self.color = SubjectColorID.canonical(color); self.weeklyGoal = weeklyGoal
     }

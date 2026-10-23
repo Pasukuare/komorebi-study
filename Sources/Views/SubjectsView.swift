@@ -35,6 +35,15 @@ struct SubjectsView: View {
                 ForEach(store.subjects) { s in
                     Card(identity: s.id.uuidString + s.name + s.icon + s.color + String(s.weeklyGoal)) {
                         HStack { SubjectIconTile(symbol: s.icon, color: appTheme.subjectColor(s.color)); Text(s.name).font(appTheme.preservedTypography.title3).foregroundStyle(appTheme.subjectColor(s.color)); Spacer(); Button(L10n.tr("Modifica")) { editing = s }; Button(L10n.tr("Elimina"), role: .destructive) { deleting = s }.disabled(store.active?.subjectID == s.id) }
+                        if s.isCompleted {
+                            HStack(spacing: DesignSystem.Spacing.sm) {
+                                Label(L10n.tr("Completata"), systemImage: "checkmark.circle")
+                                if let grade = s.grade, !grade.isEmpty {
+                                    Text(L10n.tr("Voto: %@", grade))
+                                }
+                            }.font(appTheme.preservedTypography.caption)
+                                .foregroundStyle(appTheme.palette.textSecondary)
+                        }
                         HStack(spacing: DesignSystem.Spacing.xl) {
                             subjectMetric(L10n.tr("Settimana"), value: store.total(in: store.week, subject: s.id))
                             let monthInterval = Calendar.current.dateInterval(of: .month, for: store.now) ?? DateInterval(start: store.now, end: store.now)
@@ -93,13 +102,19 @@ struct SubjectEditDraft {
     var icon: String
     var color: String
     var goal: Double
+    var completed: Bool
+    var grade: String
     init(subject: Subject) {
         name = subject.name; icon = subject.icon; color = subject.color; goal = subject.weeklyGoal
+        completed = subject.isCompleted; grade = subject.grade ?? ""
     }
     var isValid: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     func apply(to subject: Subject) {
         subject.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         subject.icon = icon; subject.color = color
+        subject.isCompleted = completed
+        let trimmedGrade = grade.trimmingCharacters(in: .whitespacesAndNewlines)
+        subject.grade = trimmedGrade.isEmpty ? nil : trimmedGrade
         subject.weeklyGoal = goal.isFinite && goal >= 0 ? min(168, goal) : 5.0
     }
 }
@@ -121,24 +136,40 @@ struct SubjectEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             Text(L10n.tr("Modifica materia")).font(appTheme.preservedTypography.title2)
-            SubjectFormFields(name: $draft.name, icon: $draft.icon, color: $draft.color,
-                              goal: $draft.goal, nameFocused: $nameFocused, isEditing: true)
-            if saveFailed {
-                Text(L10n.tr("Impossibile salvare. Riprova."))
-                    .foregroundStyle(appTheme.appearance.destructiveInk)
-            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                    SubjectFormFields(name: $draft.name, icon: $draft.icon, color: $draft.color,
+                                      goal: $draft.goal, nameFocused: $nameFocused, isEditing: true)
+                    Toggle(L10n.tr("Materia completata"), isOn: $draft.completed)
+                        .toggleStyle(StudyToggleStyle())
+                    if draft.completed {
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                            Text(L10n.tr("Voto (facoltativo)")).foregroundStyle(appTheme.palette.textSecondary)
+                            StudyTextEntry(L10n.tr("Es. 30 e lode, 28/30, Idoneità"), text: $draft.grade)
+                                .textFieldStyle(StudyTextFieldStyle())
+                        }
+                    }
+                    if saveFailed {
+                        Text(L10n.tr("Impossibile salvare. Riprova."))
+                            .foregroundStyle(appTheme.appearance.destructiveInk)
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }.frame(height: DesignSystem.PreservedGeometry.points480)
             HStack {
                 Button(L10n.tr("Annulla")) { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button(L10n.tr("Salva modifiche")) {
                     guard draft.isValid else { return }
                     let original = SubjectEditDraft(subject: subject)
+                    let originalCompleted = subject.completed
+                    let originalGrade = subject.grade
                     draft.apply(to: subject)
                     if store.save() { dismiss() }
                     else {
                         // Restore only this subject, leaving unrelated pending context changes intact.
                         subject.name = original.name; subject.icon = original.icon
                         subject.color = original.color; subject.weeklyGoal = original.goal
+                        subject.completed = originalCompleted; subject.grade = originalGrade
                         saveFailed = true
                     }
                 }.buttonStyle(ResponsiveButtonStyle(prominent: true))
