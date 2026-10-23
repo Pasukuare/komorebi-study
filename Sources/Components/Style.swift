@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import AppKit
+import QuartzCore
 
 extension Color {
     static func adaptive(_ light: (Double, Double, Double), _ dark: (Double, Double, Double)) -> Color {
@@ -1119,6 +1120,23 @@ extension EnvironmentValues {
 @MainActor final class StudyInteractionSession: NSObject, ObservableObject {
     @Published private(set) var input: StudyInputKind = .none
     private var monitor: Any?
+    private var pointerDisplayLink: CADisplayLink?
+    private var pointerFrameTarget: PointerFrameTarget?
+    private weak var pendingPointerWindow: NSWindow?
+    var pointerFramePending: Bool { pendingPointerWindow != nil }
+    private var scrollTracking: [ObjectIdentifier: ScrollTracking] = [:]
+    var scrollContainerCount: Int { scrollTracking.count }
+    @MainActor private struct ScrollTracking {
+        weak var clip: NSClipView?
+        let observer: NSObjectProtocol
+    }
+    @MainActor private final class PointerFrameTarget: NSObject {
+        weak var session: StudyInteractionSession?
+        weak var link: CADisplayLink?
+        func invalidate() { link?.invalidate() }
+        init(_ session: StudyInteractionSession) { self.session = session }
+        @objc func frame(_ link: CADisplayLink) { session?.flushPointerFrame() }
+    }
     private var tracking: [ObjectIdentifier: WindowTracking] = [:]
     @MainActor private struct WindowTracking {
         weak var window: NSWindow?
@@ -1135,6 +1153,15 @@ extension EnvironmentValues {
     func start(host: NSView) {
         stop(); self.host = host
         if let window = host.window { track(window) }
+        // Coalesce high-rate mouse input to this view's display. The link is paused
+        // immediately after each requested frame: no continuous idle polling.
+        let target = PointerFrameTarget(self)
+        pointerFrameTarget = target
+        let link = (host.window?.contentView ?? host).displayLink(target: target, selector: #selector(PointerFrameTarget.frame(_:)))
+        target.link = link
+        link.isPaused = true
+        link.add(to: .main, forMode: .common)
+        pointerDisplayLink = link
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .mouseMoved, .leftMouseDragged, .scrollWheel]) { [weak self] event in
             self?.receive(event); return event
         }
@@ -1147,15 +1174,15 @@ extension EnvironmentValues {
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             setInput(.pointer)
         case .scrollWheel:
-            suppressed = true; clearHover()
+            resetHover()
         case .mouseMoved, .leftMouseDragged:
             guard event.timestamp != lastTimestamp else { return }; lastTimestamp = event.timestamp
-            suppressed = false; updatePointer(in: window)
+            suppressed = false; requestPointerFrame(in: window)
         default: break
         }
     }
     func setInput(_ value: StudyInputKind) { if value != input { input = value } }
-    func reset() { setInput(.none); suppressed = true; clearHover() }
+    func reset() { setInput(.none); resetHover() }
     func resetScope(clearNativeFocus: Bool = true) {
         reset()
         if clearNativeFocus { host?.window?.makeFirstResponder(nil) }
@@ -1163,6 +1190,21 @@ extension EnvironmentValues {
     fileprivate func register(_ target: StudyPointerTarget.Host) {
         targets[ObjectIdentifier(target)] = WeakTarget(view: target)
         if let window = target.window { track(window) }
+        if let clip = target.enclosingScrollView?.contentView { trackScroll(clip) }
+    }
+    /// One observer per scroll container, rather than one per row/button.
+    func trackScroll(_ clip: NSClipView) {
+        for (key, value) in scrollTracking where value.clip == nil {
+            NotificationCenter.default.removeObserver(value.observer)
+            scrollTracking.removeValue(forKey: key)
+        }
+        let key = ObjectIdentifier(clip)
+        guard scrollTracking[key] == nil else { return }
+        clip.postsBoundsChangedNotifications = true
+        let observer = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.resetHover() }
+        }
+        scrollTracking[key] = ScrollTracking(clip: clip, observer: observer)
     }
     private func track(_ window: NSWindow) {
         tracking = tracking.filter { $0.value.window != nil }
@@ -1174,8 +1216,8 @@ extension EnvironmentValues {
         window.acceptsMouseMovedEvents = true
     }
     @objc(mouseMoved:) private func trackingMouseMoved(_ event: NSEvent) { receive(event) }
-    @objc(mouseEntered:) private func trackingMouseEntered(_ event: NSEvent) { if let window = event.window { updatePointer(in: window) } }
-    @objc(mouseExited:) private func trackingMouseExited(_ event: NSEvent) { if let window = event.window { updatePointer(in: window) } }
+    @objc(mouseEntered:) private func trackingMouseEntered(_ event: NSEvent) { if let window = event.window { requestPointerFrame(in: window) } }
+    @objc(mouseExited:) private func trackingMouseExited(_ event: NSEvent) { if let window = event.window { requestPointerFrame(in: window) } }
     fileprivate func unregister(_ target: StudyPointerTarget.Host) {
         targets.removeValue(forKey: ObjectIdentifier(target))
         if active === target { clearHover() }
@@ -1185,23 +1227,51 @@ extension EnvironmentValues {
         let point = target.convert(window.mouseLocationOutsideOfEventStream, from: nil)
         if !target.eligible || !target.bounds.contains(point) || !target.visibleRect.contains(point) { resetHover() }
     }
-    func resetHover() { suppressed = true; clearHover() }
+    func resetHover() {
+        suppressed = true
+        pendingPointerWindow = nil
+        pointerDisplayLink?.isPaused = true
+        clearHover()
+    }
+    private func requestPointerFrame(in window: NSWindow) {
+        pendingPointerWindow = window
+        pointerDisplayLink?.isPaused = false
+    }
+    private func flushPointerFrame() {
+        pointerDisplayLink?.isPaused = true
+        guard let window = pendingPointerWindow else { return }
+        pendingPointerWindow = nil
+        updatePointer(in: window)
+    }
     func updatePointer(in window: NSWindow) {
         guard !suppressed, window.isVisible, !window.isMiniaturized else { clearHover(); return }
         let point = window.mouseLocationOutsideOfEventStream
-        let views = targets.values.compactMap(\.view).filter { $0.window == window }
-        let candidates = views.map { view in
-            StudyHoverCandidate(id: ObjectIdentifier(view), frame: view.convert(view.bounds, to: nil), visibleFrame: view.convert(view.visibleRect, to: nil), radius: view.radius, shape: view.shape, depth: view.depth, enabled: view.eligible && !view.isHiddenOrHasHiddenAncestor)
+        // Reject inactive sections and bounding boxes before doing coordinate/path work.
+        // Keep only the best target: no per-event arrays and no paths rebuilt per pixel.
+        var winner: StudyPointerTarget.Host?
+        var bestArea = CGFloat.infinity
+        var bestDepth = Int.min
+        for target in targets.values {
+            guard let view = target.view, view.eligible, view.window == window else { continue }
+            let frame = view.convert(view.bounds, to: nil)
+            guard frame.contains(point), !view.isHiddenOrHasHiddenAncestor else { continue }
+            let local = view.convert(point, from: nil)
+            guard view.visibleRect.contains(local), view.containsPointer(local) else { continue }
+            let area = frame.width * frame.height
+            guard area <= bestArea else { continue }
+            let depth = view.depth
+            if StudyHoverPolicy.preferred(area: area, depth: depth, overArea: bestArea, depth: bestDepth) {
+                winner = view; bestArea = area; bestDepth = depth
+            }
         }
-        let winningID = StudyHoverPolicy.winner(at: point, candidates: candidates)
-        let winner = views.first { ObjectIdentifier($0) == winningID }
         if active !== winner {
             active?.changed(false, .zero); active = winner
-            if winner == nil { NSCursor.arrow.set() }
+            if let winner {
+                (winner.decorative ? NSCursor.arrow : winner.textEntry ? NSCursor.iBeam : .pointingHand).set()
+            } else { NSCursor.arrow.set() }
         }
         if let winner {
             winner.changed(true, winner.convert(point, from: nil))
-            (winner.decorative ? NSCursor.arrow : winner.textEntry ? NSCursor.iBeam : .pointingHand).set()
         }
     }
     func clearHover() {
@@ -1211,6 +1281,9 @@ extension EnvironmentValues {
     }
     func stop() {
         if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil
+        pointerDisplayLink?.invalidate(); pointerDisplayLink = nil; pointerFrameTarget = nil
+        for value in scrollTracking.values { NotificationCenter.default.removeObserver(value.observer) }
+        scrollTracking.removeAll()
         reset(); host = nil
         for item in tracking.values {
             item.content?.removeTrackingArea(item.area)
@@ -1221,8 +1294,10 @@ extension EnvironmentValues {
     deinit {
         // Fallback cleanup must remain on AppKit's main queue even if the last
         // reference is released elsewhere; do not capture the dying session.
-        let items = tracking, token = monitor
+        let items = tracking, token = monitor, frameTarget = pointerFrameTarget, scrolls = scrollTracking
         DispatchQueue.main.async {
+            frameTarget?.invalidate()
+            for value in scrolls.values { NotificationCenter.default.removeObserver(value.observer) }
             if let token { NSEvent.removeMonitor(token) }
             for item in items.values {
                 item.content?.removeTrackingArea(item.area)
@@ -1291,29 +1366,34 @@ private struct StudyPointerTarget: NSViewRepresentable {
         var shape: StudyControlShape = .rounded
         var changed: (Bool, CGPoint) -> Void = { _, _ in }
         private var oldFrame = CGRect.null
-        private var scrollObserver: NSObjectProtocol?
+        // Cache the local outline. Scrolling changes the window transform, not this
+        // path; bounds/shape changes invalidate it on the next pointer query.
+        private var hitBounds = CGRect.null
+        private var hitRadius = CGFloat.nan
+        private var hitShape: StudyControlShape = .rounded
+        private var hitPath = Path()
+        func containsPointer(_ point: CGPoint) -> Bool {
+            if hitBounds != bounds || hitRadius != radius || hitShape != shape {
+                hitBounds = bounds; hitRadius = radius; hitShape = shape
+                hitPath = StudySurfaceShape(kind: shape, radius: radius).path(in: bounds)
+            }
+            return hitPath.contains(point)
+        }
         override var isFlipped: Bool { true }
         var depth: Int { var count = 0; var node = superview; while let next = node { count += 1; node = next.superview }; return count }
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver); self.scrollObserver = nil }
             guard window != nil else { session?.unregister(self); return }
             session?.register(self)
-            if let clip = enclosingScrollView?.contentView {
-                clip.postsBoundsChangedNotifications = true
-                scrollObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: .main) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.session?.resetHover() }
-                }
-            }
+
         }
         override func layout() {
             super.layout()
             let frame = convert(bounds, to: nil)
             if frame != oldFrame { oldFrame = frame; session?.geometryChanged(self) }
         }
-        func stop() { session?.unregister(self); if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) }; scrollObserver = nil }
-        deinit { if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) } }
+        func stop() { session?.unregister(self) }
     }
 }
 private struct KeyboardFocusOutline: View {
@@ -1336,24 +1416,35 @@ struct StudyHoverCandidate<ID: Hashable> {
     let id: ID
     let frame: CGRect
     let visibleFrame: CGRect
-    let radius: CGFloat
-    var shape: StudyControlShape = .rounded
     let depth: Int
     let enabled: Bool
+    let path: Path
+    init(id: ID, frame: CGRect, visibleFrame: CGRect, radius: CGFloat, shape: StudyControlShape = .rounded, depth: Int, enabled: Bool) {
+        self.id = id; self.frame = frame; self.visibleFrame = visibleFrame
+        self.depth = depth; self.enabled = enabled
+        // Geometry is immutable during a pointer pass; prepare it once, not per hit test.
+        path = StudySurfaceShape(kind: shape, radius: radius).path(in: frame)
+    }
 }
 enum StudyHoverPolicy {
+    static func preferred(area: CGFloat, depth: Int, overArea: CGFloat, depth oldDepth: Int) -> Bool {
+        area < overArea || (area == overArea && depth > oldDepth)
+    }
     static func winner<ID>(at point: CGPoint, candidates: [StudyHoverCandidate<ID>]) -> ID? {
-        candidates.filter { candidate in
-            candidate.enabled && candidate.visibleFrame.contains(point) && candidate.frame.contains(point)
-                && StudySurfaceShape(kind: candidate.shape, radius: candidate.radius).path(in: candidate.frame).contains(point)
-        }.min { a, b in
-            let aa = a.frame.width * a.frame.height, bb = b.frame.width * b.frame.height
-            return aa == bb ? a.depth > b.depth : aa < bb
-        }?.id
+        var winner: ID?
+        var bestArea = CGFloat.infinity
+        var bestDepth = Int.min
+        for candidate in candidates {
+            guard candidate.enabled, candidate.frame.contains(point), candidate.visibleFrame.contains(point) else { continue }
+            let area = candidate.frame.width * candidate.frame.height
+            guard preferred(area: area, depth: candidate.depth, overArea: bestArea, depth: bestDepth), candidate.path.contains(point) else { continue }
+            winner = candidate.id; bestArea = area; bestDepth = candidate.depth
+        }
+        return winner
     }
 }
 
-enum StudyControlShape { case rounded, circle, capsule }
+enum StudyControlShape: Equatable { case rounded, circle, capsule }
 struct StudySurfaceShape: InsettableShape {
     let kind: StudyControlShape
     var radius: CGFloat = DesignSystem.Radius.control

@@ -13,14 +13,18 @@ struct HistoryView: View {
     @State private var editing: StudySession?
     @State private var deleting: StudySession?
     var filtered: [StudySession] {
-        let toLimit = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: to)) ?? to
+        let calendar = Calendar.current
+        let fromLimit = calendar.startOfDay(for: from)
+        let toLimit = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: to)) ?? to
         return store.sessions.filter { s in
-            (search.isEmpty || s.note.localizedCaseInsensitiveContains(search) || s.subjectName.localizedCaseInsensitiveContains(search)) && (subject == "Tutte" || s.subjectName == subject) && (mode == "Tutte" || s.timerMode == mode) && s.duration >= minMinutes * 60 && (!dateFilter || (s.startDate >= Calendar.current.startOfDay(for: from) && s.startDate < toLimit))
+            (search.isEmpty || s.note.localizedCaseInsensitiveContains(search) || s.subjectName.localizedCaseInsensitiveContains(search)) && (subject == "Tutte" || s.subjectName == subject) && (mode == "Tutte" || s.timerMode == mode) && s.duration >= minMinutes * 60 && (!dateFilter || (s.startDate >= fromLimit && s.startDate < toLimit))
         }
     }
     var body: some View {
+        // One filtering pass per body, shared by count, empty state and lazy List.
+        let visibleSessions = filtered
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy18) {
-            HStack { Text(L10n.tr("Cronologia")).font(appTheme.preservedTypography.pageTitle); Spacer(); Text(L10n.count(filtered.count, singular: "%@ sessione", plural: "%@ sessioni")).foregroundStyle(appTheme.palette.textSecondary) }
+            HStack { Text(L10n.tr("Cronologia")).font(appTheme.preservedTypography.pageTitle); Spacer(); Text(L10n.count(visibleSessions.count, singular: "%@ sessione", plural: "%@ sessioni")).foregroundStyle(appTheme.palette.textSecondary) }
             StudyTextEntry(L10n.tr("Cerca materia o note"), text: $search).interactiveHover(textEntry: true).textFieldStyle(StudyTextFieldStyle())
             HStack {
                 StudyDropdown(title: L10n.tr("Materia"), options: [("Tutte", L10n.tr("Tutte le materie"))] + Array(Set(store.sessions.map(\.subjectName))).sorted().map { ($0, $0) }, selection: $subject)
@@ -28,14 +32,14 @@ struct HistoryView: View {
                 Text(L10n.tr("Min. minuti")); StudyNumberField(title: L10n.tr("Minimo"), value: $minMinutes).frame(width: DesignSystem.TimerLayout.studyField)
             }
             HStack { Toggle(L10n.tr("Filtra date"), isOn: $dateFilter).interactiveHover(); if dateFilter { DatePicker(L10n.tr("Dal"), selection: $from, displayedComponents: .date).interactiveHover(); DatePicker(L10n.tr("Al"), selection: $to, displayedComponents: .date).interactiveHover() } }
-            if filtered.isEmpty {
+            if visibleSessions.isEmpty {
                 StudyEmptyState(symbol: "book.closed", title: store.sessions.isEmpty ? L10n.tr("Nessuna sessione") : L10n.tr("Nessuna sessione qui"), detail: store.sessions.isEmpty ? L10n.tr("Le sessioni salvate appariranno qui.") : L10n.tr("Prova a togliere qualche filtro."), actionTitle: store.sessions.isEmpty ? L10n.tr("Inizia a studiare") : L10n.tr("Azzera filtri")) {
                     if store.sessions.isEmpty { store.openTimer = true }
                     else { search = ""; subject = "Tutte"; mode = "Tutte"; minMinutes = 0; dateFilter = false }
                 }
             }
             else {
-                List(filtered) { s in
+                List(visibleSessions) { s in
                     HistorySessionRow(session: s, edit: { editing = s }, delete: { deleting = s })
                         .listRowInsets(EdgeInsets())
                         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }

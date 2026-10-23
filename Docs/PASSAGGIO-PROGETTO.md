@@ -1,15 +1,15 @@
 # Komorebi Study — passaggio di progetto
 
-Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 13** (lingue e testi).
+Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 14** (ottimizzazione e controllo bug).
 Destinatario: sviluppatore o agente incaricato di correggere bug, verificare le prestazioni e continuare lo sviluppo.
 
 ## 1. Da leggere prima di iniziare
 
-L'app è funzionante e compilabile, ma **la verifica nativa dell'interfaccia e delle prestazioni non è conclusa**. La build più recente contiene correzioni del grafico Statistiche e del fondo del popover che hanno superato i test automatici; non è ancora confermato dall'utente che lag e bande siano scomparsi.
+L'app è funzionante e compilabile, ma **la verifica nativa dell'interfaccia e delle prestazioni non è conclusa**. La build 14 aggiunge ottimizzazioni di hover, scroll, conteggi in blocco, avvio, Focus e audio. Le correzioni precedenti del grafico e del popover sono conservate; non è ancora confermato nell’interfaccia reale che lag e bande siano scomparsi. Vedere `Docs/Ottimizzazione-build14-20261024.md`.
 
 La build 13 aggiunge Italiano/Inglese e rimuove le frasi motivazionali; vedere `Docs/Lingue-e-testi-20261024.md`. I bug di interfaccia/prestazioni segnalati sulla build 11 e corretti nella 12 restano da verificare anche nella 13.
 
-Il riferimento per proseguire è il **contenuto attuale dei sorgenti**, non il solo ultimo commit. Numerose modifiche consegnate non sono ancora committate. Non fare reset, checkout distruttivi, pulizia del working tree o rebase prima di averne conservato una copia.
+La build 13 è stata registrata in Git nello snapshot `59c337e`; l’ottimizzazione della build 14 è nel commit successivo, riconoscibile dal titolo `Ottimizzazione: riduci lavoro di hover, conteggi e Focus`. Consultare `git log` o `GIT-COMMIT.txt` della consegna. Conservare sempre una copia prima di operazioni distruttive; Dist e Checkpoints non sono versionati.
 
 Il documento fotografa lo stato attuale: non è una richiesta di implementare tutte le idee dei vecchi prompt. Concordare con il proprietario nuovi interventi che cambiano comportamento o aspetto.
 
@@ -33,11 +33,13 @@ Percorso sul Mac originale:
 /Users/ale/Documents/ChatGPT/Komorebi
 ```
 
-Ultima app consegnata: versione dichiarata **1.8**, build **13**, Apple Silicon, Release, firma locale ad hoc, non notarizzata.
+Ultima app consegnata: versione dichiarata **1.8**, build **14**, Apple Silicon, Release, firma locale ad hoc, non notarizzata.
 
 | Elemento | Percorso relativo al progetto |
 |---|---|
-| DMG più recente | `Dist/Komorebi-Study-Lingue-20261024.dmg` |
+| DMG più recente | `Dist/Komorebi-Study-Ottimizzata-20261024.dmg` |
+| Consegna build 14, benchmark e sorgenti | `Dist/Komorebi-Ottimizzata-20261024/` |
+| DMG lingue, build 13 | `Dist/Komorebi-Study-Lingue-20261024.dmg` |
 | Consegna lingue e testi | `Dist/Komorebi-Lingue-20261024/` |
 | DMG precedente, fix Statistiche | `Dist/Komorebi-Study-Fix-Statistiche-20261024.dmg` |
 | Checksum DMG | stesso nome con suffisso `.sha256` |
@@ -137,7 +139,7 @@ Usare una destinazione nuova, senza sovrascrivere consegne precedenti. Non pubbl
 
 ### Ultimo esito automatico disponibile
 
-**118 test, uno saltato, zero errori**, prima della build Release 13. Log: `Dist/Komorebi-Lingue-20261024/tests.log`. Il test saltato richiede `KOMOREBI_MIGRATION_FIXTURE`, fixture opzionale di migrazione; non è stato usato l'archivio personale per abilitarlo. Firma della build e integrità del DMG verificate. Questo documento non comporta nuove modifiche al codice o un nuovo collaudo.
+**129 test, uno saltato, zero errori**, in Debug e Release per la build 14. Log: `Dist/Komorebi-Ottimizzata-20261024/tests.log` e `tests-release.log`. Il test saltato richiede `KOMOREBI_MIGRATION_FIXTURE`, fixture opzionale di migrazione; non è stato usato l'archivio personale per abilitarlo. Firma della build e integrità del DMG verificate. Questo documento non comporta nuove modifiche al codice o un nuovo collaudo.
 
 ## 6. Modifiche recenti da preservare
 
@@ -156,6 +158,17 @@ Non aggiungere scorciatoie parallele per aggirare problemi del focus. Inventario
 ### Identità e temi
 
 Scelto il concept **D con icona chiara**: due foglie/pagine e disco di luce. Il wordmark resta; Halloween mantiene la zucca scelta **B minacciosa**. Le viste leggono proprietà del pacchetto tema, non condizioni sul nome del tema. Token indipendenti per modalità Chiaro/Scuro/Sistema e tema; colori delle materie con ID semantici; font locali con licenze. Cifre decorative Halloween a celle fisse dove previsto.
+
+### Ottimizzazione e commenti (build 14)
+
+- Hover: eventi accorpati al refresh con display link sospeso a riposo, un osservatore per scroll container, geometrie locali riusate, scelta del target in un solo passaggio.
+- Conteggi: StudyActivityCache confronta ID/Data esatti; SavedStudyTiming mantiene le regole originali come valori. Calendario, barre e serie leggono i modelli una volta per gruppo di calcoli. Non memorizzare totali senza una strategia affidabile di invalidazione.
+- Sezioni: creazione alla prima visita, poi identità conservata. Cronologia filtra una sola volta per body.
+- Focus: FocusControlsActivity pubblica solo mostra/nascondi e usa un solo task con scadenza monotona; tre binding di focus distinti.
+- Audio: AmbientWaveform genera WAV deterministici fuori dal MainActor, controlla la cancellazione e non trattiene un array duplicato di campioni. La richiesta più recente ha la precedenza; i WAV sono identici alla baseline.
+- Badge Dock aggiornato solo se cambia, ticker con tolleranza. Date, checkpoint, pause e completamenti non sono riscritti.
+
+Commenti nel codice spiegano cache, geometria, lifecycle, snapshot e compatibilità legacy. Benchmark riproducibile: `Scripts/benchmark-release.py`, tre prove Release alternate e checksum uguali. I tempi misurano percorsi di codice, non FPS/CPU/watt dell’app. Dati e limiti nel rapporto build 14. Fetch, salvataggi SwiftData e import restano sul MainActor; le decorazioni non sono state sostituite senza prove.
 
 ### Lingue e testi (build 13)
 
@@ -209,9 +222,9 @@ Esiste un vecchio confronto controllato della sola Home Halloween, precedente a 
 
 ## 9. Git, copie e materiali
 
-Ultimo HEAD rilevato: `e17445c` — Compito 4: Ottimizzazione rendering animazione candela con CoreAnimation. Precedenti: `58e53e1` popover opaco, `f94bb9f` tastiera selettore icone, `5ad152e` altezze card.
+La cronologia precedente a questo passaggio terminava in `e17445c`. Lo snapshot `59c337e` registra i lavori già consegnati della build 13; il commit successivo registra separatamente l’ottimizzazione build 14. Non è stata riscritta la cronologia. Gli identificativi esatti sono anche in `GIT-COMMIT.txt` della consegna.
 
-**Molti lavori successivi non sono committati**, comprese identità D, isolamento del clock, interazioni e ultimo bugfix. Il vecchio ambiente bloccava la scrittura di `.git/index.lock`; è un limite storico, non una prova che Git sia ancora bloccato nel nuovo ambiente. Controllare `git status`, salvare il working tree e organizzare commit senza perdere cambiamenti. Non affermare che un commit contiene la build 12.
+Il vecchio blocco di scrittura di `.git/index.lock` appartiene all’ambiente precedente: è stato possibile creare i nuovi commit. Non leggere le note storiche sui permessi come stato attuale. Prima di iniziare controllare comunque `git status`, perché eventuali modifiche successive del proprietario devono essere preservate.
 
 I documenti datati riportano numeri di test e limiti della propria consegna: in caso di divergenza usare sorgenti correnti, log più recenti e questo documento. Le patch in Dist possono essere incrementali rispetto a copie precedenti, non applicabili direttamente all'ultimo HEAD: leggere il rapporto prima di applicarle.
 

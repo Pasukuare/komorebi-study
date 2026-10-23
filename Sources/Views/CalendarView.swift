@@ -16,6 +16,11 @@ struct CalendarView: View {
         return Array(repeating: nil, count: offset) + range.compactMap { c.date(byAdding: .day, value: $0 - 1, to: start) }
     }
     var body: some View {
+        let calendar = Calendar.current
+        let visibleDays = days
+        let intervals = visibleDays.compactMap { $0 }.compactMap { calendar.dateInterval(of: .day, for: $0) }
+        let sharesByDay = Dictionary(uniqueKeysWithValues: zip(intervals.map(\.start), store.calendarShares(in: intervals)))
+        let examCounts = Dictionary(grouping: store.exams, by: { calendar.startOfDay(for: $0.date) }).mapValues(\.count)
         ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy22) {
                 HStack {
@@ -27,11 +32,11 @@ struct CalendarView: View {
                 }
                 LazyVGrid(columns: columns, spacing: DesignSystem.Spacing.xs) {
                     ForEach(0..<7, id: \.self) { n in Text(L10n.displayCalendar.shortStandaloneWeekdaySymbols[(Calendar.current.firstWeekday - 1 + n) % 7]).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary) }
-                    ForEach(Array(days.enumerated()), id: \.offset) { _, date in
+                    ForEach(Array(visibleDays.enumerated()), id: \.offset) { _, date in
                         if let date {
                             let interval = Calendar.current.dateInterval(of: .day, for: date) ?? DateInterval(start: date, end: date)
-                            let shares = store.calendarShares(in: interval)
-                            let examCount = store.exams.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }.count
+                            let shares = sharesByDay[interval.start] ?? []
+                            let examCount = examCounts[interval.start] ?? 0
                             CalendarDayCell(date: date, shares: shares, examCount: examCount, selected: Calendar.current.isDate(date, inSameDayAs: selected)) { selected = date }
                         } else { Color.clear.frame(height: DesignSystem.CalendarAppearance.cellHeight) }
                     }
@@ -152,18 +157,37 @@ struct CalendarSubjectShare: Identifiable {
 
 extension StudyStore {
     func calendarShares(in interval: DateInterval) -> [CalendarSubjectShare] {
-        var groups: [String: (String, String, Double)] = [:]
+        calendarShares(in: [interval]).first ?? []
+    }
+    /// Batch the month: model reads/JSON decoding happen once per session, not once
+    /// per cell. Only scalar time arithmetic repeats, and colors remain semantic IDs.
+    func calendarShares(in intervals: [DateInterval]) -> [[CalendarSubjectShare]] {
+        guard !intervals.isEmpty else { return [] }
+        var byID: [UUID: Subject] = [:]
+        for subject in subjects where byID[subject.id] == nil { byID[subject.id] = subject }
+        var groups = Array(repeating: [String: (String, String, Double)](), count: intervals.count)
         for session in sessions {
-            let seconds = contribution(session, in: interval)
-            guard seconds > 0, seconds.isFinite else { continue }
-            let subject = subjects.first { $0.id == session.subjectID }
-            let key = session.subjectID?.uuidString ?? "name:" + session.subjectName
-            let previous = groups[key]?.2 ?? 0
-            groups[key] = (subject?.name ?? session.subjectName, subject?.color ?? "Salvia", previous + seconds)
+            let timing = savedTiming(for: session)
+            var metadata: (key: String, name: String, color: String)?
+            for index in intervals.indices {
+                let seconds = timing.contribution(in: intervals[index])
+                guard seconds > 0, seconds.isFinite else { continue }
+                if metadata == nil {
+                    let subject = session.subjectID.flatMap { byID[$0] }
+                    metadata = (session.subjectID?.uuidString ?? "name:" + session.subjectName,
+                                subject?.name ?? session.subjectName, subject?.color ?? "Salvia")
+                }
+                if let item = metadata {
+                    let previous = groups[index][item.key]?.2 ?? 0
+                    groups[index][item.key] = (item.name, item.color, previous + seconds)
+                }
+            }
         }
-        let total = groups.values.reduce(0) { $0 + $1.2 }
-        return groups.map { key, value in CalendarSubjectShare(id: key, name: value.0, color: value.1, seconds: value.2, fraction: value.2 / total) }
-            .sorted { $0.seconds == $1.seconds ? $0.id < $1.id : $0.seconds > $1.seconds }
+        return groups.map { group in
+            let total = group.values.reduce(0) { $0 + $1.2 }
+            return group.map { key, value in CalendarSubjectShare(id: key, name: value.0, color: value.1, seconds: value.2, fraction: value.2 / total) }
+                .sorted { $0.seconds == $1.seconds ? $0.id < $1.id : $0.seconds > $1.seconds }
+        }
     }
 }
 

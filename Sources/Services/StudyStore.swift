@@ -64,6 +64,7 @@ import AppKit
     @Published var openTimer = false
     @Published var cycles = 0
     private var ticker: Timer?
+    private let activityCache = StudyActivityCache()
     private var sleepObserver: NSObjectProtocol?
     @Published var statusMessage: String?
     @Published var nextSubject: UUID? { didSet { defaults.set(nextSubject?.uuidString, forKey: "nextSubject") } }
@@ -143,7 +144,11 @@ import AppKit
             context.insert(Subject(name: "Studio", icon: "book.closed")); save(); defaults.set(true, forKey: "seeded")
         }
         if systemIntegration { ticker = Timer(timeInterval: 1, repeats: true) { [weak self] _ in Task { @MainActor in self?.tick() } }
-        if let ticker { RunLoop.main.add(ticker, forMode: .common) } }
+        if let ticker {
+            // Let macOS coalesce wake-ups; elapsed time still comes from dates, not ticks.
+            ticker.tolerance = 0.1
+            RunLoop.main.add(ticker, forMode: .common)
+        } }
         if systemIntegration {
             sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
                 let sleepDate = Date()
@@ -228,7 +233,11 @@ import AppKit
         now = Date()
         if active != nil { defaults.set(now, forKey: "lastCheckpoint") }
         if let active, active.pausedAt == nil, let target = active.target, active.elapsed(at: now) >= target { finish(natural: true) }
-        if systemIntegration { NSApp?.dockTile.badgeLabel = active.map { $0.isBreak ? L10n.tr("Pausa") : clockText($0.displayed(at: now)) } }
+        if systemIntegration, let dock = NSApp?.dockTile {
+            let label = active.map { $0.isBreak ? L10n.tr("Pausa") : clockText($0.displayed(at: now)) }
+            // Setting even an unchanged badge can ask the Dock to redraw its tile.
+            if dock.badgeLabel != label { dock.badgeLabel = label }
+        }
     }
     func finish(natural: Bool = false, at suppliedEnd: Date? = nil, fromMenu: Bool = false) {
         guard let a = active else { return }
@@ -298,17 +307,32 @@ import AppKit
         }
     }
     func total(in interval: DateInterval, subject: UUID? = nil) -> Double {
-        sessions.filter { subject == nil || $0.subjectID == subject }.reduce(0) { $0 + contribution($1, in: interval) }
-    }
-    func contribution(_ s: StudySession, in i: DateInterval) -> Double {
-        if let data = s.activityData, let intervals = try? JSONDecoder().decode([StudyInterval].self, from: data) {
-            return intervals.reduce(0) { $0 + max(0, min($1.end, i.end).timeIntervalSince(max($1.start, i.start))) }
+        // Avoid a temporary filtered array for every chart bucket / live summary.
+        var result = 0.0
+        for session in sessions where subject == nil || session.subjectID == subject {
+            result += contribution(session, in: interval)
         }
-        // Proportional allocation for sessions crossing midnight, including manually corrected sessions.
-        let span = s.endDate.timeIntervalSince(s.startDate)
-        guard span > 0 else { return i.contains(s.startDate) ? s.duration : 0 }
-        let overlap = max(0, min(s.endDate, i.end).timeIntervalSince(max(s.startDate, i.start)))
-        return s.duration * min(1, overlap / span)
+        return result
+    }
+    /// Read SwiftData once for a batch, then do interval arithmetic on plain values.
+    /// The result preserves session order, allocation rules and subject filtering.
+    func totals(in intervals: [DateInterval], subject: UUID? = nil) -> [Double] {
+        guard !intervals.isEmpty else { return [] }
+        var result = Array(repeating: 0.0, count: intervals.count)
+        for session in sessions where subject == nil || session.subjectID == subject {
+            let timing = savedTiming(for: session)
+            for index in intervals.indices { result[index] += timing.contribution(in: intervals[index]) }
+        }
+        return result
+    }
+    func savedTiming(for session: StudySession) -> SavedStudyTiming {
+        if let data = session.activityData, let intervals = activityCache.intervals(id: session.id, data: data) {
+            return .recorded(intervals)
+        }
+        return .proportional(start: session.startDate, end: session.endDate, duration: session.duration)
+    }
+    func contribution(_ session: StudySession, in interval: DateInterval) -> Double {
+        savedTiming(for: session).contribution(in: interval)
     }
     var day: DateInterval { Calendar.current.dateInterval(of: .day, for: now) ?? DateInterval(start: now, end: now) }
     var week: DateInterval { Calendar.current.dateInterval(of: .weekOfYear, for: now) ?? DateInterval(start: now, end: now) }
@@ -317,15 +341,68 @@ import AppKit
     var streak: Int {
         let c = Calendar.current
         let threshold = (settings.streakUsesGoal ? settings.dailyGoal * 60 : settings.streakMinutes) * 60
+        let timings = sessions.map { savedTiming(for: $0) }
+        func savedTotal(in interval: DateInterval) -> Double {
+            timings.reduce(0) { $0 + $1.contribution(in: interval) }
+        }
         var date = now; var count = 0
         let todayInterval = c.dateInterval(of: .day, for: date) ?? DateInterval(start: date, end: date)
-        if total(in: todayInterval) < threshold { date = c.date(byAdding: .day, value: -1, to: date) ?? date }
+        if savedTotal(in: todayInterval) < threshold { date = c.date(byAdding: .day, value: -1, to: date) ?? date }
         for _ in 0..<36500 {
-            guard let interval = c.dateInterval(of: .day, for: date), total(in: interval) >= max(1, threshold) else { break }
+            guard let interval = c.dateInterval(of: .day, for: date), savedTotal(in: interval) >= max(1, threshold) else { break }
             count += 1
             guard let prev = c.date(byAdding: .day, value: -1, to: date) else { break }
             date = prev
         }
         return count
+    }
+}
+
+
+/// Cache only the decoded payload, never a computed total or a managed SwiftData model.
+/// Matching the exact Data prevents stale results after edits/imports with the same ID.
+/// NSCache bounds retained memory and may discard entries without affecting correctness.
+@MainActor final class StudyActivityCache {
+    private final class Entry {
+        let source: Data
+        let intervals: [StudyInterval]?
+        init(source: Data, intervals: [StudyInterval]?) { self.source = source; self.intervals = intervals }
+    }
+    private let entries = NSCache<NSUUID, Entry>()
+    private let decoder = JSONDecoder()
+    private(set) var decodeCount = 0
+    init() {
+        entries.countLimit = 4096
+        entries.totalCostLimit = 4 * 1024 * 1024
+    }
+    func intervals(id: UUID, data: Data) -> [StudyInterval]? {
+        let key = id as NSUUID
+        if let cached = entries.object(forKey: key), cached.source == data { return cached.intervals }
+        let intervals = try? decoder.decode([StudyInterval].self, from: data)
+        decodeCount += 1
+        // Failed decodes are cached too; contribution() retains its legacy fallback.
+        let cost = data.count + (intervals?.count ?? 0) * MemoryLayout<StudyInterval>.stride
+        entries.setObject(Entry(source: data, intervals: intervals), forKey: key, cost: cost)
+        return intervals
+    }
+}
+
+
+/// Value snapshot of the existing counting rules. It never owns a managed model.
+/// Recorded spans exclude actual pauses. Older/manually edited sessions keep the
+/// same proportional allocation, including the historical zero-span fallback.
+enum SavedStudyTiming {
+    case recorded([StudyInterval])
+    case proportional(start: Date, end: Date, duration: Double)
+    func contribution(in interval: DateInterval) -> Double {
+        switch self {
+        case .recorded(let spans):
+            return spans.reduce(0) { $0 + max(0, min($1.end, interval.end).timeIntervalSince(max($1.start, interval.start))) }
+        case .proportional(let start, let end, let duration):
+            let span = end.timeIntervalSince(start)
+            guard span > 0 else { return interval.contains(start) ? duration : 0 }
+            let overlap = max(0, min(end, interval.end).timeIntervalSince(max(start, interval.start)))
+            return duration * min(1, overlap / span)
+        }
     }
 }

@@ -58,13 +58,16 @@ struct StatisticsView: View {
     var buckets: [TimeBucket] {
         let c = Calendar.current
         guard var date = c.dateInterval(of: bucketUnit, for: interval.start)?.start else { return [] }
-        var result: [TimeBucket] = []
+        var dates: [Date] = []
+        var intervals: [DateInterval] = []
         while date < interval.end {
             guard let end = c.date(byAdding: bucketUnit, value: 1, to: date) else { break }
-            let part = DateInterval(start: max(date, interval.start), end: min(end, interval.end))
-            result.append(TimeBucket(date: date, value: store.total(in: part, subject: subjectID) / 3600)); date = end
+            dates.append(date)
+            intervals.append(DateInterval(start: max(date, interval.start), end: min(end, interval.end)))
+            date = end
         }
-        return result
+        let seconds = store.totals(in: intervals, subject: subjectID)
+        return zip(dates, seconds).map { TimeBucket(date: $0.0, value: $0.1 / 3600) }
     }
     var shares: [SubjectShare] {
         Dictionary(grouping: entries, by: { $0.subjectID?.uuidString ?? "deleted:\($0.subjectName)" }).map { key, values in

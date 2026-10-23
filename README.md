@@ -1,6 +1,10 @@
 # Komorebi Study
 
-Applicazione macOS nativa, offline, per coltivare una routine di studio. Versione 1.0 MVP, Apple Silicon, macOS 15 o successivo. Swift, SwiftUI, Swift Charts, SwiftData, UserNotifications e AVFoundation. Nessuna dipendenza esterna.
+Applicazione macOS nativa, offline, per registrare sessioni di studio. Versione 1.8, build 14, Apple Silicon, macOS 15 o successivo. Swift, SwiftUI, Swift Charts, SwiftData, UserNotifications e AVFoundation. Nessuna dipendenza esterna.
+
+## Stato dello sviluppo
+
+Per continuare il progetto leggere [il passaggio di progetto](Docs/PASSAGGIO-PROGETTO.md) e [il rapporto della build 14](Docs/Ottimizzazione-build14-20261024.md). La suite automatica passa; fluidità, consumi e collaudo completo nell’host macOS restano da confermare. La nuova build include Italiano/Inglese, testi neutri e ottimizzazioni documentate.
 
 ## Avvio
 
@@ -21,14 +25,14 @@ Scegli l'obiettivo iniziale, seleziona una materia e premi **Inizia a studiare**
 - Riepilogo settimanale e informazioni locali basate sui dati, senza AI esterna.
 - Menu bar con tempo, pausa, stop e riapertura dell'app; funziona anche con la finestra chiusa. Badge Dock.
 - Notifiche native opzionali e suono di completamento. Attivale nelle impostazioni e autorizzale in macOS.
-- Focus a schermo intero, cinque palette, aspetto sistema/chiaro/scuro, particelle leggere a 12 fps solo con animazioni Full. Reduce Motion è rispettato; Off e Reduced mantengono lo sfondo statico. La palette Morning ha una lieve tinta calda dal pomeriggio.
+- Focus a schermo intero, temi Komorebi e Halloween con aspetto sistema/chiaro/scuro e lingue Italiano/English. Decorazioni e Riduci movimento rispettano le preferenze e la visibilità della finestra.
 - Tre ambienti sintetizzati originali: pioggia, vento, camino. Volume regolabile; nessun file audio di terzi. Sono suoni sintetici, non registrazioni realistiche.
 - Export CSV e backup JSON; importazione con controllo versione e deduplicazione per ID.
-- Controlli SwiftUI accessibili, descrizioni dei grafici native e scorciatoie: Spazio, ⌘ Invio, ⌘ punto. I campi di testo mantengono l'uso normale della tastiera.
+- Controlli SwiftUI accessibili, descrizioni dei grafici native e scorciatoie: ⌃⌘S, ⌘ Invio, ⇧⌘P e ⌘ punto. I campi di testo mantengono l'uso normale della tastiera.
 
 ## Comportamento del timer
 
-L'interfaccia si aggiorna ogni secondo, ma il tempo deriva dalle date di inizio, pausa e ripresa. I tick persi non alterano il conteggio. Lo sleep conta come studio se non metti in pausa il timer; un conto alla rovescia viene limitato alla durata prevista. Il cronometro continua anche se esci dall'app e viene recuperato alla riapertura. Per smettere di registrare premi Pausa o Termina.
+L'interfaccia si aggiorna ogni secondo, ma il tempo deriva dalle date di inizio, pausa e ripresa. I tick persi non alterano il conteggio. Per impostazione predefinita il timer viene sospeso durante lo stop, con opzione nelle Impostazioni; un conto alla rovescia viene limitato alla durata prevista. La sessione attiva viene recuperata sospesa al riavvio, usando il checkpoint registrato. Per smettere di registrare premi Pausa o Termina.
 
 Le pause Pomodoro vengono preparate in pausa e avviate con **Riprendi**. Al termine di una pausa, la nuova sessione richiede **Avvia**. Questo evita cicli automatici e ore di studio inventate quando sei lontano. Lo stop salva anche una sessione parziale. Il numero dei Pomodoro completati è conservato fra riaperture e determina la pausa lunga.
 
@@ -78,7 +82,7 @@ Il pacchetto Swift non ha dipendenze da scaricare. I test usano archivi in memor
 
 ## Confini della prima versione
 
-Questo è un MVP utilizzabile, non l'intera roadmap. WidgetKit non incluso; niente registrazioni Forest/Café/Night, illustrazioni dipinte complesse o simulazioni meteorologiche. Il timer personalizzato usa un unico campo minuti; il filtro durata ha un limite minimo. Gli insight includono confronto settimanale, ultima finestra di 30 giorni e sessione più lunga di oggi; non includono ancora analisi per fascia oraria o giorno più produttivo. Non è stato eseguito un collaudo su hardware con macOS 15, un ciclo fisico di sleep di lunga durata né un audit completo VoiceOver. Notifiche soggette ai permessi e a Non disturbare di macOS.
+Per lo stato aggiornato vedere il documento di passaggio. Restano limiti di collaudo e distribuzione. WidgetKit non incluso; niente registrazioni Forest/Café/Night, illustrazioni dipinte complesse o simulazioni meteorologiche. Il timer personalizzato usa un unico campo minuti; il filtro durata ha un limite minimo. Gli insight includono confronto settimanale, ultima finestra di 30 giorni e sessione più lunga di oggi; non includono ancora analisi per fascia oraria o giorno più produttivo. Non è stato eseguito un collaudo su hardware con macOS 15, un ciclo fisico di sleep di lunga durata né un audit completo VoiceOver. Notifiche soggette ai permessi e a Non disturbare di macOS.
 
 Non sono presenti account, richieste di rete, telemetria, acquisti o servizi remoti.
 

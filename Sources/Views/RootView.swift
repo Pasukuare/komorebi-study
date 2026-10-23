@@ -13,6 +13,7 @@ struct RootView: View {
     @EnvironmentObject var store: StudyStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var page: Page = .home
+    @State private var visitedPages: Set<Page> = [.home]
     @State private var revealTheme = false
     private var sidebarVisible: Bool { store.settings.showsSidebar }
     @Namespace private var sidebarSelection
@@ -117,6 +118,10 @@ struct RootView: View {
         .buttonStyle(ResponsiveButtonStyle())
         .renderingLifecycle()
         .interactionHost(scope: page.rawValue + String(store.focus), clearNativeFocus: !store.focus)
+        .onChange(of: page) { previous, current in
+            visitedPages.insert(previous)
+            visitedPages.insert(current)
+        }
         .onChange(of: store.openTimer) { if store.openTimer { page = .timer; store.openTimer = false } }
         .sheet(isPresented: Binding(get: { !store.settings.onboarded }, set: { if !$0 { store.settings.onboarded = true } })) { OnboardingView() }
         .sheet(item: Binding(get: { store.menuCompletion ? nil : store.completed }, set: { store.completed = $0 })) { session in CompletionView(session: session) }
@@ -126,7 +131,10 @@ struct RootView: View {
         SidebarGhostToggle(isOpen: sidebarVisible) { store.settings.sidebarIsVisible = !sidebarVisible }
             .disabled(store.focus)
     }
-    private func section<Content: View>(_ item: Page, @ViewBuilder content: () -> Content) -> some View {
+    @ViewBuilder private func section<Content: View>(_ item: Page, @ViewBuilder content: () -> Content) -> some View {
+        // Defer Charts, lists and their native tracking views until the first visit.
+        // Afterwards retain the same identity so scroll, filters and drafts survive.
+        if page == item || visitedPages.contains(item) {
         content()
             .environment(\.komorebiSectionVisible, page == item && !store.focus)
             .opacity(page == item ? 1 : 0)
@@ -134,6 +142,7 @@ struct RootView: View {
             .allowsHitTesting(page == item && !store.focus).disabled(page != item || store.focus)
             .accessibilityHidden(page != item || store.focus)
             .zIndex(page == item ? 1 : 0)
+        }
     }
 }
 struct HomeView: View {
@@ -353,11 +362,12 @@ struct FocusView: View {
     @EnvironmentObject var store: StudyStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
-    @State private var lastMovement = Date()
-    @State private var controlsVisible = true
-    @FocusState private var controlFocused: Bool
+    @StateObject private var activity = FocusControlsActivity()
+    @Environment(\.komorebiRendering) private var rendering
+    private enum FocusControl: Hashable { case exitTop, pause, exitBottom }
+    @FocusState private var controlFocused: FocusControl?
     @FocusState private var surfaceFocused: Bool
-    private var visible: Bool { controlsVisible || controlFocused || voiceOver }
+    private var visible: Bool { activity.controlsVisible || controlFocused != nil || voiceOver }
     var body: some View {
         ZStack {
             Landscape(theme: store.settings.landscape, animations: store.settings.animations, driftingLight: true).ignoresSafeArea()
@@ -367,13 +377,13 @@ struct FocusView: View {
                     Spacer()
                     Button(L10n.tr("Esci da Focus"), systemImage: "arrow.down.right.and.arrow.up.left", action: exitFocus)
                         .keyboardShortcut(.escape, modifiers: [])
-                        .focused($controlFocused)
+                        .focused($controlFocused, equals: .exitTop)
                 }
                 Spacer()
                 HStack(spacing: DesignSystem.Spacing.md) {
                     Button(store.actionTitle, systemImage: store.studying ? "pause.fill" : "play.fill") { store.toggle() }
-                        .buttonStyle(StudyActionStyle()).focused($controlFocused)
-                    Button(L10n.tr("Esci"), action: exitFocus).focused($controlFocused)
+                        .buttonStyle(StudyActionStyle()).focused($controlFocused, equals: .pause)
+                    Button(L10n.tr("Esci"), action: exitFocus).focused($controlFocused, equals: .exitBottom)
                 }
             }.padding(DesignSystem.Spacing.xxl)
                 .opacity(visible ? 1 : 0)
@@ -382,17 +392,16 @@ struct FocusView: View {
                 .animation(reduceMotion || store.settings.animations == "Off" ? nil : .easeOut(duration: DesignSystem.Interaction.sectionDuration), value: visible)
         }.contentShape(Rectangle())
             .focusable().focusEffectDisabled().focused($surfaceFocused)
-            .onAppear { surfaceFocused = true }
+            .onAppear { surfaceFocused = true; activity.noteMovement() }
             .onKeyPress(.escape) { exitFocus(); return .handled }
-            .onKeyPress(.tab) { controlsVisible = true; return .ignored }
+            .onKeyPress(.tab) { activity.noteMovement(); return .ignored }
             .onContinuousHover { phase in
-                if case .active = phase { controlsVisible = true; lastMovement = Date() }
+                if case .active = phase, rendering.visible { activity.noteMovement() }
             }
-            .task(id: lastMovement) {
-                do { try await Task.sleep(nanoseconds: DesignSystem.Interaction.controlsTimeout) }
-                catch { return }
-                controlsVisible = false
+            .onChange(of: rendering.visible) { _, visible in
+                if visible { activity.noteMovement() } else { activity.stop() }
             }
+            .onDisappear { activity.stop() }
             .onExitCommand(perform: exitFocus)
     }
     private func exitFocus() {
@@ -585,4 +594,36 @@ private struct ThemeSuggestionCard: View {
             }
         }
     }
+}
+
+
+/// Mouse positions are not view state. Only show/hide transitions invalidate Focus.
+/// One sleeping task follows a monotonic deadline instead of being cancelled/recreated
+/// for every mouse event. Keyboard focus and VoiceOver remain independent visibility reasons.
+@MainActor final class FocusControlsActivity: ObservableObject {
+    @Published private(set) var controlsVisible = true
+    private let clock = ContinuousClock()
+    private let timeout: Duration
+    private var deadline = ContinuousClock.now
+    private var hideTask: Task<Void, Never>?
+    init(timeout: Duration = .nanoseconds(Int64(DesignSystem.Interaction.controlsTimeout))) { self.timeout = timeout }
+    func noteMovement() {
+        deadline = clock.now.advanced(by: timeout)
+        if !controlsVisible { controlsVisible = true }
+        guard hideTask == nil else { return }
+        let clock = clock
+        hideTask = Task { [weak self] in
+            while let deadline = self?.deadline {
+                do { try await clock.sleep(until: deadline) } catch { return }
+                guard !Task.isCancelled, let self else { return }
+                if clock.now >= self.deadline {
+                    self.controlsVisible = false
+                    self.hideTask = nil
+                    return
+                }
+            }
+        }
+    }
+    func stop() { hideTask?.cancel(); hideTask = nil }
+    deinit { hideTask?.cancel() }
 }
