@@ -1023,6 +1023,7 @@ struct ThemeLogoView: View {
     @Environment(\.komorebiMotion) private var motion
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.komorebiSectionVisible) private var sectionVisible
     private var illuminated: Bool { theme.logoMark.glowEnabled && theme.mode == .dark && theme.decorationsEnabled }
     private var moving: Bool { illuminated && ThemeAnimationPolicy.moving(visible: scenePhase != .background, decorations: theme.decorationsEnabled, reduceMotion: reduceMotion, animations: motion) }
     var body: some View {
@@ -1031,15 +1032,9 @@ struct ThemeLogoView: View {
             switch mark.artwork {
             case .systemSymbol(let name): Image(systemName: name)
             case .jackOLantern:
-                TimelineView(.animation(minimumInterval: theme.decoration.ringFrameInterval, paused: !moving)) { timeline in
-                    ZStack {
-                        if illuminated {
-                            JackOLanternShape(faceOnly: true)
-                                .fill(LinearGradient(colors: [mark.glowStart, mark.glowEnd], startPoint: .top, endPoint: .bottom))
-                                .opacity(mark.glowOpacity * ThemeAnimationPolicy.candleOpacity(elapsed: timeline.date.timeIntervalSinceReferenceDate, decoration: theme.decoration, active: moving))
-                        }
-                        JackOLanternShape().fill(mark.tint(in: theme.palette), style: FillStyle(eoFill: true))
-                    }
+                ZStack {
+                    if illuminated { CompositedCandleGlow(mark: mark, decoration: theme.decoration, moving: moving && sectionVisible) }
+                    JackOLanternShape().fill(mark.tint(in: theme.palette), style: FillStyle(eoFill: true))
                 }.frame(width: mark.width, height: mark.height)
             }
         }.allowsHitTesting(false).accessibilityHidden(true)
@@ -1118,5 +1113,84 @@ struct ThemeFixedTimerDigits: View {
             .accessibilityElement(children: .ignore).accessibilityLabel("Tempo").accessibilityValue(text)
             .transaction { $0.animation = nil }
         }
+    }
+}
+
+/// The artwork stays in SwiftUI; only its opacity is sampled by the compositor.
+/// No display-link callback or per-frame ObservableObject publication is needed.
+struct CompositedCandleGlow: NSViewRepresentable {
+    let mark: ThemeLogoMark
+    let decoration: ThemeDecoration
+    let moving: Bool
+    func makeNSView(context: Context) -> Host { Host() }
+    func updateNSView(_ view: Host, context: Context) { view.configure(mark: mark, decoration: decoration, moving: moving) }
+    static func dismantleNSView(_ view: Host, coordinator: ()) { view.stopObserving() }
+    final class Host: NSView {
+        private let artwork = NSHostingView(rootView: AnyView(EmptyView()))
+        private var glowAppearance: Appearance?
+        private var animationKey: String?
+        private var moving = false
+        private var decoration: ThemeDecoration?
+        private var observers: [NSObjectProtocol] = []
+        struct Appearance: Equatable { let start: Color; let end: Color; let opacity: Double }
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            artwork.wantsLayer = true
+            addSubview(artwork)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+        override func layout() { super.layout(); artwork.frame = bounds }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        func configure(mark: ThemeLogoMark, decoration: ThemeDecoration, moving: Bool) {
+            let next = Appearance(start: mark.glowStart, end: mark.glowEnd, opacity: mark.glowOpacity)
+            if next != glowAppearance {
+                glowAppearance = next
+                artwork.rootView = AnyView(JackOLanternShape(faceOnly: true)
+                    .fill(LinearGradient(colors: [mark.glowStart, mark.glowEnd], startPoint: .top, endPoint: .bottom))
+                    .opacity(mark.glowOpacity))
+            }
+            self.decoration = decoration; self.moving = moving
+            updateAnimation()
+        }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow(); stopObserving()
+            guard let window else { return }
+            let center = NotificationCenter.default
+            for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification, NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+                observers.append(center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in self?.updateAnimation() })
+            }
+            for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
+                observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in self?.updateAnimation() })
+            }
+            updateAnimation()
+        }
+        func updateAnimation() {
+            guard let decoration, let layer = artwork.layer else { return }
+            let active = moving && window?.isVisible == true && window?.isMiniaturized == false && window?.occlusionState.contains(.visible) == true && NSApp.isActive
+            let key = active ? "\(decoration.candlePeriod)|\(decoration.candleMinimum)|\(decoration.ringFrameInterval)" : nil
+            guard key != animationKey else { return }
+            layer.removeAnimation(forKey: "candleOpacity"); layer.opacity = 1; animationKey = key
+            guard active else { return }
+            let animation = CAKeyframeAnimation(keyPath: "opacity")
+            animation.values = CandleOpacitySamples.values(decoration: decoration)
+            animation.duration = decoration.candlePeriod
+            animation.repeatCount = .infinity
+            animation.calculationMode = .linear
+            // Match the existing logo's global phase, including after an occlusion.
+            animation.beginTime = layer.convertTime(CACurrentMediaTime(), from: nil) - Date().timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: decoration.candlePeriod)
+            layer.add(animation, forKey: "candleOpacity")
+        }
+        func stopObserving() {
+            for observer in observers { NotificationCenter.default.removeObserver(observer) }
+            observers.removeAll(); artwork.layer?.removeAnimation(forKey: "candleOpacity"); animationKey = nil
+        }
+        deinit { for observer in observers { NotificationCenter.default.removeObserver(observer) } }
+    }
+}
+enum CandleOpacitySamples {
+    static func values(decoration: ThemeDecoration) -> [Double] {
+        let count = max(1, Int(ceil(decoration.candlePeriod / decoration.ringFrameInterval)))
+        return (0...count).map { ThemeAnimationPolicy.candleOpacity(elapsed: Double($0) / Double(count) * decoration.candlePeriod, decoration: decoration, active: true) }
     }
 }

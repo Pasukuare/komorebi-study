@@ -30,6 +30,7 @@ struct RootView: View {
                 }.frame(height: DesignSystem.Layout.headerHeight)
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 ThemeBrand().font(appTheme.typography.wordmark).foregroundStyle(appTheme.palette.accent)
+                    .environment(\.komorebiSectionVisible, sidebarVisible && !store.focus)
                     .padding(.horizontal, DesignSystem.Spacing.lg).padding(.top, DesignSystem.Spacing.xl)
                 ScrollView {
                     VStack(spacing: DesignSystem.Spacing.xs) {
