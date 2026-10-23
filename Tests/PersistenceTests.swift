@@ -95,3 +95,39 @@ extension PersistenceTests {
         XCTAssertEqual(s.settings.dailyGoal, 3.0)
     }
 }
+
+extension PersistenceTests {
+    func testIsolatedArchiveReopensSubjectsSessionsAndPreferences() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let defaults = UserDefaults(suiteName: "Reopen.\(UUID())")!
+        let url = folder.appendingPathComponent("Study.store")
+        let id: UUID
+        do {
+            let first = try StudyStore(defaults: defaults, archiveURL: url)
+            let subject = Subject(name: "Prova riapertura", icon: "atom", color: "Rosa", weeklyGoal: 7)
+            id = subject.id; first.context.insert(subject)
+            first.settings.appearance = "Dark"; first.settings.animations = "Off"
+            first.context.insert(StudySession(start: Date().addingTimeInterval(-3600), end: Date(), duration: 3600, subjectID: id, subjectName: subject.name, mode: "Cronometro", pause: 0))
+            XCTAssertTrue(first.save())
+        }
+        let reopened = try StudyStore(defaults: defaults, archiveURL: url)
+        XCTAssertEqual(reopened.subjects.first { $0.id == id }?.color, "classici.rosa-antico")
+        XCTAssertEqual(reopened.subjects.first { $0.id == id }?.weeklyGoal, 7)
+        XCTAssertEqual(reopened.sessions.first?.subjectID, id)
+        XCTAssertEqual(reopened.settings.appearance, "Dark")
+        XCTAssertEqual(reopened.settings.animations, "Off")
+    }
+}
+
+extension PersistenceTests {
+    func testReviewAppCanNeverResolveThePersonalArchive() throws {
+        let root = URL(fileURLWithPath: "/tmp/review-test-support")
+        XCTAssertNil(StudyReviewArchive.url(bundleIdentifier: "com.komorebi.study", applicationSupport: root))
+        XCTAssertNil(StudyReviewArchive.url(bundleIdentifier: "com.komorebi.study.preview.ui", applicationSupport: root))
+        let review = try XCTUnwrap(StudyReviewArchive.url(bundleIdentifier: "com.komorebi.study.review.20261023", applicationSupport: root))
+        XCTAssertEqual(review.path, "/tmp/review-test-support/Komorebi Study Review/Study.store")
+        XCTAssertNotEqual(review, root.appendingPathComponent("Komorebi Study/Study.store"))
+    }
+}

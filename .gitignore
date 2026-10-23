@@ -1,8 +1,14 @@
 # Build and Package Manager Artifacts
 .build/
 .build-release/
+.build-design-system/
+.preview-ui/
+.preview-qa/
 .swiftpm/
 Dist/
+Checkpoints/
+task-input/
+review-assets/
 DerivedData/
 
 # macOS system files

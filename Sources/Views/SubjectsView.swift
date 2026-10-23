@@ -1,23 +1,44 @@
 import SwiftUI
 struct SubjectsView: View {
+    @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
+    @FocusState private var nameFocused: Bool
     @State private var name = ""
-    @State private var icon = "book.closed"
-    @State private var color = "Salvia"
+    @State private var icon = "book"
+    @State private var color = SubjectColorID.defaultID
     @State private var goal = 5.0
     @State private var editing: Subject?
     @State private var deleting: Subject?
     func subjectMetric(_ title: String, value: Double) -> some View {
-        VStack(alignment: .leading, spacing: 5) { Text(title).font(.caption).foregroundStyle(.secondary); Text(durationText(value)).font(.system(size: 23, weight: .medium, design: .rounded)).monospacedDigit() }.frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: DesignSystem.PreservedGeometry.gap5) { Text(title).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary); Text(durationText(value)).font(appTheme.preservedTypography.subjectMetric).monospacedDigit() }.frame(maxWidth: .infinity, alignment: .leading)
     }
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                Text("Materie").font(.system(size: 30, design: .serif))
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy22) {
+                Text("Materie").font(appTheme.preservedTypography.pageTitle)
+                if store.subjects.isEmpty {
+                    StudyEmptyState(symbol: "books.vertical", title: "Dai un nome al tuo prossimo passo", detail: "Aggiungi una materia e ritrova il tuo tempo, tutto in un posto.", actionTitle: "Scrivi la prima materia") { nameFocused = true }
+                }
                 Card {
-                    Text(editing == nil ? "Una nuova materia" : "Modifica materia").font(.headline)
-                    HStack { TextField("Nome della materia o progetto", text: $name).textFieldStyle(.roundedBorder); Picker("Icona", selection: $icon) { ForEach(["book.closed", "leaf", "laptopcomputer", "pencil", "function", "globe", "brain"], id: \.self) { Image(systemName: $0).tag($0) } }.frame(width: 140) }
-                    HStack { Picker("Colore", selection: $color) { ForEach(["Salvia", "Cielo", "Tramonto", "Lavanda", "Terra"], id: \.self) { Text($0) } }; TextField("Ore / settimana", value: $goal, format: .number).frame(width: 70); Text("ore / settimana") }
+                    Text(editing == nil ? "Una nuova materia" : "Modifica materia").font(appTheme.preservedTypography.headline)
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        SubjectIconPicker(selection: $icon, color: appTheme.subjectColor(color))
+                        StudyTextEntry("Nome della materia o progetto", text: $name).focused($nameFocused).textFieldStyle(StudyTextFieldStyle())
+                    }
+                    HStack(spacing: DesignSystem.Spacing.md) {
+                        SubjectColorPicker(selection: $color, isEditing: editing != nil).id(editing?.id)
+                        Spacer(minLength: 0)
+                    }
+                    HStack {
+                        Text("Ore / settimana").foregroundStyle(appTheme.palette.textSecondary)
+                        Spacer()
+                        StudyNumberField(title: "Ore alla settimana", value: $goal, range: 0...168, step: 0.5).frame(width: DesignSystem.TimerLayout.studyField)
+                    }
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        SubjectIconTile(symbol: icon, color: appTheme.subjectColor(color))
+                        Text(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "La tua prossima materia" : name)
+                            .font(appTheme.typography.heading).foregroundStyle(appTheme.subjectColor(color)).lineLimit(2)
+                    }.accessibilityElement(children: .combine).accessibilityLabel("Anteprima della materia")
                     HStack {
                         if editing != nil { Button("Annulla") { editing = nil; name = "" } }
                         Button(editing == nil ? "Aggiungi materia" : "Salva modifiche") {
@@ -26,23 +47,23 @@ struct SubjectsView: View {
                             if let editing { editing.name = trimmedName; editing.icon = icon; editing.color = color; editing.weeklyGoal = validGoal }
                             else { store.context.insert(Subject(name: trimmedName, icon: icon, color: color, weeklyGoal: validGoal)) }
                             if store.save() { name = ""; editing = nil }
-                        }.buttonStyle(.borderedProminent).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }.buttonStyle(ResponsiveButtonStyle(prominent: true)).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
                 ForEach(store.subjects) { s in
                     Card {
-                        HStack { Label(s.name, systemImage: s.icon).font(.title3).foregroundStyle(Color.subject(s.color)); Spacer(); Button("Modifica") { editing = s; name = s.name; icon = s.icon; color = s.color; goal = s.weeklyGoal }; Button("Elimina", role: .destructive) { deleting = s }.disabled(store.active?.subjectID == s.id) }
-                        HStack(spacing: 24) {
+                        HStack { SubjectIconTile(symbol: s.icon, color: appTheme.subjectColor(s.color)); Text(s.name).font(appTheme.preservedTypography.title3).foregroundStyle(appTheme.subjectColor(s.color)); Spacer(); Button("Modifica") { editing = s; name = s.name; icon = s.icon; color = s.color; goal = s.weeklyGoal }; Button("Elimina", role: .destructive) { deleting = s }.disabled(store.active?.subjectID == s.id) }
+                        HStack(spacing: DesignSystem.Spacing.xl) {
                             subjectMetric("Settimana", value: store.total(in: store.week, subject: s.id))
                             let monthInterval = Calendar.current.dateInterval(of: .month, for: store.now) ?? DateInterval(start: store.now, end: store.now)
                             subjectMetric("Mese", value: store.total(in: monthInterval, subject: s.id))
                             subjectMetric("Sempre", value: store.sessions.filter { $0.subjectID == s.id }.reduce(0) { $0 + $1.duration })
                         }
-                        Text("\(store.sessions.filter { $0.subjectID == s.id }.count) sessioni salvate").font(.caption).foregroundStyle(.secondary)
-                        GoalBar(title: "Obiettivo settimanale", value: store.total(in: store.week, subject: s.id), goal: s.weeklyGoal * 3600)
+                        Text("\(store.sessions.filter { $0.subjectID == s.id }.count) sessioni salvate").font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                        GoalBar(title: "Obiettivo settimanale", value: store.total(in: store.week, subject: s.id), goal: s.weeklyGoal * 3600, color: appTheme.subjectColor(s.color))
                     }
                 }
-            }.padding(30)
-        }.alert("Eliminare la materia?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) { Button("Annulla", role: .cancel) {}; Button("Elimina", role: .destructive) { if let deleting { if store.settings.lastSubject == deleting.id { store.settings.lastSubject = nil }; store.context.delete(deleting); store.save() }; deleting = nil } } message: { Text("Le sessioni passate e il loro nome verranno conservati.") }
+            }.padding(DesignSystem.Layout.contentPadding).frame(maxWidth: DesignSystem.Layout.contentMaximum).frame(maxWidth: .infinity)
+        }.defaultScrollAnchor(.top, for: .initialOffset).alert("Eliminare la materia?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) { Button("Annulla", role: .cancel) {}; Button("Elimina", role: .destructive) { if let deleting { if store.settings.lastSubject == deleting.id { store.settings.lastSubject = nil }; store.context.delete(deleting); store.save() }; deleting = nil } } message: { Text("Le sessioni passate e il loro nome verranno conservati.") }
     }
 }

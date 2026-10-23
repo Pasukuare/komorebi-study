@@ -1,0 +1,1 @@
+Proposte vettoriali, non ancora implementate. A simpatica; B minacciosa; C minimalista. Ogni versione è mostrata a 48 e 24 px in Scuro e Pergamena. I ritagli del viso e delle incisioni sono trasparenti. Il colore del file singolo usa currentColor. Nessuna modifica al logo di produzione o al Dock. Attesa scelta A/B/C.

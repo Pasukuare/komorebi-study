@@ -1,15 +1,21 @@
 import Foundation
 import AppKit
 import UniformTypeIdentifiers
+import SQLite3
 
 struct SessionRecord: Codable {
-    var id: UUID; var start: Date; var end: Date; var duration: Double; var subjectID: UUID?; var subject: String; var mode: String; var pause: Double; var note: String
-    init(_ s: StudySession) { id = s.id; start = s.startDate; end = s.endDate; duration = s.duration; subjectID = s.subjectID; subject = s.subjectName; mode = s.timerMode; pause = s.pauseDuration; note = s.note }
-    var model: StudySession { StudySession(id: id, start: start, end: end, duration: duration, subjectID: subjectID, subjectName: subject, mode: mode, pause: pause, note: note) }
+    var id: UUID; var start: Date; var end: Date; var duration: Double; var subjectID: UUID?; var subject: String; var mode: String; var pause: Double; var note: String; var activityData: Data? = nil
+    init(_ s: StudySession) { id = s.id; start = s.startDate; end = s.endDate; duration = s.duration; subjectID = s.subjectID; subject = s.subjectName; mode = s.timerMode; pause = s.pauseDuration; note = s.note; activityData = s.activityData }
+    var model: StudySession { let session = StudySession(id: id, start: start, end: end, duration: duration, subjectID: subjectID, subjectName: subject, mode: mode, pause: pause, note: note); session.activityData = activityData; return session }
 }
 struct SubjectRecord: Codable {
     var id: UUID; var name: String; var icon: String; var color: String; var weeklyGoal: Double
-    init(_ s: Subject) { id = s.id; name = s.name; icon = s.icon; color = s.color; weeklyGoal = s.weeklyGoal }
+    init(_ s: Subject) { id = s.id; name = s.name; icon = s.icon; color = SubjectColorID.canonical(s.color); weeklyGoal = s.weeklyGoal }
+    var model: Subject {
+        let subject = Subject(name: name, icon: icon, color: color, weeklyGoal: weeklyGoal)
+        subject.id = id
+        return subject
+    }
 }
 struct Backup: Codable { var version = 1; var settings: UserSettings; var subjects: [SubjectRecord]; var sessions: [SessionRecord]; var exams: [ExamRecord]? = nil }
 @MainActor extension StudyStore {
@@ -45,7 +51,7 @@ struct Backup: Codable { var version = 1; var settings: UserSettings; var subjec
             guard alert.runModal() == .alertFirstButtonReturn else { return }
             var subjectIDs = Set(subjects.map(\.id)); var sessionIDs = Set(sessions.map(\.id))
             for s in backup.subjects where subjectIDs.insert(s.id).inserted {
-                let model = Subject(name: s.name, icon: s.icon, color: s.color, weeklyGoal: s.weeklyGoal); model.id = s.id; context.insert(model)
+                context.insert(s.model)
             }
             for s in backup.sessions where sessionIDs.insert(s.id).inserted { context.insert(s.model) }
             var examIDs = Set(exams.map(\.id))
@@ -53,5 +59,39 @@ struct Backup: Codable { var version = 1; var settings: UserSettings; var subjec
             do { try context.save() } catch { context.rollback(); throw error }
             settings = backup.settings; settings.onboarded = true; refresh()
         } catch { self.error = "Backup non importato: \(error.localizedDescription)" }
+    }
+}
+
+/// Uses macOS SQLite, including its WAL-aware backup API; no third-party dependency.
+enum ColorIDMigrationBackup {
+    @discardableResult static func create(archiveURL: URL, preferences: [String: Any]) throws -> URL {
+        let stamp = Date().ISO8601Format().replacingOccurrences(of: ":", with: "-")
+        let folder = archiveURL.deletingLastPathComponent().appendingPathComponent("Backups", isDirectory: true)
+            .appendingPathComponent("ColorIDs-\(stamp)-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var source: OpaquePointer?
+        var destination: OpaquePointer?
+        guard sqlite3_open_v2(archiveURL.path, &source, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            if let source { sqlite3_close(source) }
+            throw CocoaError(.fileReadUnknown)
+        }
+        defer { sqlite3_close(source) }
+        let copy = folder.appendingPathComponent("Study.store")
+        guard sqlite3_open(copy.path, &destination) == SQLITE_OK else {
+            if let destination { sqlite3_close(destination) }
+            throw CocoaError(.fileWriteUnknown)
+        }
+        defer { sqlite3_close(destination) }
+        guard let backup = sqlite3_backup_init(destination, "main", source, "main") else { throw CocoaError(.fileWriteUnknown) }
+        var result = sqlite3_backup_step(backup, -1)
+        for _ in 0..<20 where result == SQLITE_BUSY || result == SQLITE_LOCKED {
+            Thread.sleep(forTimeInterval: 0.025)
+            result = sqlite3_backup_step(backup, -1)
+        }
+        let finished = sqlite3_backup_finish(backup)
+        guard result == SQLITE_DONE, finished == SQLITE_OK else { throw CocoaError(.fileWriteUnknown) }
+        let data = try PropertyListSerialization.data(fromPropertyList: preferences, format: .binary, options: 0)
+        try data.write(to: folder.appendingPathComponent("preferences.plist"), options: .atomic)
+        return folder
     }
 }

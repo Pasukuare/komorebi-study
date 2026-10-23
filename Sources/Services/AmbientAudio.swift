@@ -39,12 +39,14 @@ import SwiftUI
     }
 }
 struct AmbientControls: View {
+    @Environment(\.studyTheme) private var appTheme
     @ObservedObject var audio: AmbientAudio
     var body: some View {
         HStack {
-            Image(systemName: "waveform").foregroundStyle(.secondary)
-            Picker("Ambiente", selection: $audio.sound) { ForEach(["Off", "Pioggia", "Vento", "Camino"], id: \.self) { Text($0) } }.frame(width: 170)
-            Slider(value: $audio.volume, in: 0...1).frame(width: 100).accessibilityLabel("Volume ambiente")
+            Image(systemName: "waveform").foregroundStyle(appTheme.palette.textSecondary)
+            StudyDropdown(title: "Ambiente", options: [("Off", "Silenzio"), ("Pioggia", "Pioggia"), ("Vento", "Vento"), ("Camino", "Camino")], selection: $audio.sound).frame(width: 170)
+            StudyVolumeSlider(value: $audio.volume).frame(width: 100)
+
         }.help("Suoni sintetizzati originali, senza registrazioni esterne")
     }
 }

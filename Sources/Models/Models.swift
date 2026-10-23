@@ -1,6 +1,32 @@
 import Foundation
 import SwiftData
 
+enum ProductText {
+    static let name = "Komorebi Study"
+    static let wordmark = "komorebi"
+    static let welcome = "Benvenuto in Komorebi"
+    static let open = "Apri Komorebi"
+    static let openAccessible = "Apri Komorebi Study"
+    static let quit = "Esci da Komorebi"
+}
+
+/// Only known legacy values are rewritten. Future/unknown IDs are preserved verbatim.
+enum SubjectColorID {
+    static let defaultID = "classici.salvia"
+    static let neutralID = "classici.grigio-caldo"
+    static let legacyAliases = [
+        "Salvia": "classici.salvia",
+        "Cielo": "classici.azzurro-polvere", "Azzurro polvere": "classici.azzurro-polvere",
+        "Lavanda": "classici.lavanda",
+        "Rosa": "classici.rosa-antico", "Rosa antico": "classici.rosa-antico",
+        "Terra": "classici.terracotta", "Terracotta": "classici.terracotta",
+        "Tramonto": "classici.ocra", "Ocra": "classici.ocra",
+        "Muschio": "classici.verde-muschio", "Verde muschio": "classici.verde-muschio",
+        "Neutro": "classici.grigio-caldo", "Grigio caldo": "classici.grigio-caldo"
+    ]
+    static func canonical(_ value: String) -> String { legacyAliases[value] ?? value }
+}
+
 enum TimerMode: String, Codable, CaseIterable, Identifiable {
     case pomodoro = "Pomodoro", stopwatch = "Cronometro", custom = "Personalizzato"
     var id: String { rawValue }
@@ -11,8 +37,8 @@ enum TimerMode: String, Codable, CaseIterable, Identifiable {
     var icon: String
     var color: String
     var weeklyGoal: Double
-    init(name: String, icon: String = "leaf", color: String = "Salvia", weeklyGoal: Double = 5) {
-        id = UUID(); self.name = name; self.icon = icon; self.color = color; self.weeklyGoal = weeklyGoal
+    init(name: String, icon: String = "leaf", color: String = SubjectColorID.defaultID, weeklyGoal: Double = 5) {
+        id = UUID(); self.name = name; self.icon = icon; self.color = SubjectColorID.canonical(color); self.weeklyGoal = weeklyGoal
     }
 }
 @Model final class StudySession {
@@ -25,8 +51,18 @@ enum TimerMode: String, Codable, CaseIterable, Identifiable {
     var timerMode: String
     var pauseDuration: Double
     var note: String
+    var activityData: Data? = nil
     init(id: UUID = UUID(), start: Date, end: Date, duration: Double, subjectID: UUID?, subjectName: String, mode: String, pause: Double, note: String = "") {
         self.id = id; startDate = start; endDate = end; self.duration = duration; self.subjectID = subjectID; self.subjectName = subjectName; timerMode = mode; pauseDuration = pause; self.note = note
+    }
+}
+extension StudySession {
+    func updateTiming(start: Date, end: Date, duration: Double, pause: Double) {
+        // Editing metadata must preserve the measured activity intervals.
+        if startDate != start || endDate != end || abs(self.duration - duration) > 0.001 || abs(pauseDuration - pause) > 0.001 {
+            activityData = nil
+        }
+        startDate = start; endDate = end; self.duration = duration; pauseDuration = pause
     }
 }
 struct UserSettings: Codable, Equatable {
@@ -38,7 +74,15 @@ struct UserSettings: Codable, Equatable {
     var longBreakEvery = 4
     var customMinutes = 60.0
     var customBreak = 0.0
+    // Keep the legacy JSON key: this preference is the landscape, not the theme package.
     var theme = "Morning"
+    var dismissedThemeCampaigns: [String]?
+    var themeID: String?
+    var themeOptions: [String: [String: Bool]]?
+    var landscape: String {
+        get { theme }
+        set { theme = newValue }
+    }
     var appearance = "System"
     var notifications = false
     var sounds = false
@@ -48,6 +92,8 @@ struct UserSettings: Codable, Equatable {
     var lastSubject: UUID?
     var preferredMode = TimerMode.pomodoro
     var onboarded = false
+    var sidebarIsVisible: Bool?
+    var showsSidebar: Bool { sidebarIsVisible ?? true }
 
     mutating func sanitize() {
         dailyGoal = dailyGoal.isFinite && dailyGoal > 0 ? min(24, max(0.25, dailyGoal)) : 3.0
@@ -67,6 +113,10 @@ struct UserSettings: Codable, Equatable {
         return copy
     }
 }
+struct StudyInterval: Codable {
+    var start: Date
+    var end: Date
+}
 struct ActiveTimer: Codable {
     var id = UUID()
     var start: Date
@@ -77,16 +127,35 @@ struct ActiveTimer: Codable {
     var subjectName: String
     var mode: TimerMode
     var isBreak = false
+    var intervals: [StudyInterval]? = []
+    var segmentStart: Date?
+    func activity(until end: Date) -> [StudyInterval]? {
+        guard var result = intervals else { return nil }
+        if pausedAt == nil {
+            let beginning = segmentStart ?? start
+            if end > beginning { result.append(StudyInterval(start: beginning, end: end)) }
+        } else if result.isEmpty && segmentStart == nil, let pausedAt, pausedAt > start {
+            result.append(StudyInterval(start: start, end: pausedAt))
+        }
+        return result.compactMap {
+            let finish = min($0.end, end)
+            return finish > $0.start ? StudyInterval(start: $0.start, end: finish) : nil
+        }
+    }
     func elapsed(at now: Date) -> Double {
-        max(0, (pausedAt ?? now).timeIntervalSince(start) - pauseDuration)
+        max(0, min(pausedAt ?? now, now).timeIntervalSince(start) - pauseDuration)
     }
     func displayed(at now: Date) -> Double {
         if let target { return max(0, target - elapsed(at: now)) }
         return elapsed(at: now)
     }
-    mutating func pause(at now: Date) { if pausedAt == nil { pausedAt = now } }
+    mutating func pause(at now: Date) {
+        guard pausedAt == nil else { return }
+        if let beginning = segmentStart ?? Optional(start), now > beginning { intervals?.append(StudyInterval(start: beginning, end: now)) }
+        pausedAt = now; segmentStart = now
+    }
     mutating func resume(at now: Date) {
-        if let pausedAt { pauseDuration += max(0, now.timeIntervalSince(pausedAt)); self.pausedAt = nil }
+        if let pausedAt { pauseDuration += max(0, now.timeIntervalSince(pausedAt)); self.pausedAt = nil; segmentStart = now }
     }
 }
 func durationText(_ seconds: Double) -> String {
@@ -116,5 +185,13 @@ struct ExamRecord: Codable {
     init(_ exam: StudyExam) { id = exam.id; title = exam.title; date = exam.date; hasTime = exam.hasTime; subjectID = exam.subjectID; note = exam.note }
     var model: StudyExam {
         let exam = StudyExam(title: title, date: date, hasTime: hasTime, subjectID: subjectID, note: note); exam.id = id; return exam
+    }
+}
+
+/// Only the separately packaged review app uses this archive. Production location is unchanged.
+enum StudyReviewArchive {
+    static func url(bundleIdentifier: String?, applicationSupport: URL) -> URL? {
+        guard bundleIdentifier?.hasPrefix("com.komorebi.study.review") == true else { return nil }
+        return applicationSupport.appendingPathComponent("Komorebi Study Review", isDirectory: true).appendingPathComponent("Study.store")
     }
 }
