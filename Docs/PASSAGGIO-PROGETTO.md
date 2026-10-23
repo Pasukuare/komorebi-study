@@ -1,7 +1,9 @@
 # Komorebi Study — passaggio di progetto
 
-Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 16** (materie completate e voto facoltativo).
+Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 17** (palette stagionali più distinte).
 Destinatario: sviluppatore o agente incaricato di correggere bug, verificare le prestazioni e continuare lo sviluppo.
+
+La build 17 distingue le palette stagionali, preserva la tonalità in scuro e aggiunge descrizioni nel selettore. Classici e identificativi salvati invariati. Vedere `Docs/Palette-stagionali-build17.md`.
 
 La build 16 aggiunge lo stato completata e il voto facoltativo, con attributi opzionali, backup compatibili e test di migrazione sintetica. Vedere `Docs/Materie-completate-build16.md`.
 

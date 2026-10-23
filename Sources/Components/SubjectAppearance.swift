@@ -178,6 +178,9 @@ struct SubjectColorPicker: View {
                 HStack(spacing: DesignSystem.Spacing.xxs) { tabs }
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) { tabs }
             }
+            Text(tab.paletteDescription)
+                .font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: DesignSystem.Spacing.xxs) {
                 ForEach(colors) { choice in
                     Button { focusedColor = choice.id; selection = choice.id } label: {

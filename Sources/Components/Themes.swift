@@ -592,6 +592,15 @@ enum SubjectColorGroup: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self { case .classics: return "circle.grid.2x2"; case .spring: return "camera.macro"; case .summer: return "sun.max"; case .autumn: return "leaf"; case .winter: return "snowflake" }
     }
+    var paletteDescription: String {
+        switch self {
+        case .classics: return L10n.tr("Neutri caldi e colori essenziali")
+        case .spring: return L10n.tr("Fiori, germogli e cieli di primavera")
+        case .summer: return L10n.tr("Mare, agrumi e fioriture estive")
+        case .autumn: return L10n.tr("Foglie d’acero, zucca e terra")
+        case .winter: return L10n.tr("Ghiaccio, bacche e sempreverdi")
+        }
+    }
     static func group(for colorID: String) -> SubjectColorGroup? {
         SubjectColorGroup(rawValue: String(SubjectColorID.canonical(colorID).split(separator: ".").first ?? ""))
     }
@@ -608,30 +617,30 @@ struct SeasonalSubjectColor {
 enum SeasonalSubjectColors {
     // Generated and audited by Scripts/audit-seasonal-colors.py. Classic values are untouched.
     static let values: [SeasonalSubjectColor] = [
-        .init(id: "primavera.ciliegio", name: "Ciliegio", light: "8F5366", dark: "D8A5B5"),
-        .init(id: "primavera.germoglio", name: "Germoglio", light: "526D3B", dark: "A5BA93"),
-        .init(id: "primavera.glicine", name: "Glicine", light: "6C5D8C", dark: "B8AED0"),
-        .init(id: "primavera.pesco", name: "Pesco", light: "955335", dark: "DBA78F"),
-        .init(id: "primavera.cielo-aprile", name: "Cielo d’aprile", light: "3E6987", dark: "96B8CF"),
-        .init(id: "primavera.primula", name: "Primula", light: "7C6113", dark: "C6B276"),
-        .init(id: "estate.mare", name: "Mare", light: "2D6C80", dark: "8EBAC7"),
-        .init(id: "estate.corallo", name: "Corallo", light: "A14A3A", dark: "E0A498"),
-        .init(id: "estate.oleandro", name: "Oleandro", light: "9E4670", dark: "D7A4BC"),
-        .init(id: "estate.menta", name: "Menta", light: "2C7060", dark: "88BDB1"),
-        .init(id: "estate.cobalto", name: "Cobalto", light: "4763A2", dark: "A3B3D5"),
-        .init(id: "estate.agrume", name: "Agrume", light: "865D0B", dark: "CEAF70"),
-        .init(id: "autunno.zucca", name: "Zucca", light: "9A5114", dark: "DBA87F"),
-        .init(id: "autunno.acero", name: "Acero", light: "B03A2E", dark: "D8A7A2"),
-        .init(id: "autunno.senape", name: "Senape", light: "756419", dark: "BEB385"),
-        .init(id: "autunno.castagna", name: "Castagna", light: "7B5238", dark: "C1B0A5"),
-        .init(id: "autunno.vino", name: "Vino", light: "8A3A4F", dark: "CAABB3"),
-        .init(id: "autunno.bosco", name: "Bosco", light: "536C41", dark: "AAB7A0"),
-        .init(id: "inverno.ardesia", name: "Ardesia", light: "556779", dark: "AAB4BD"),
-        .init(id: "inverno.mirtillo", name: "Mirtillo", light: "4C5FA0", dark: "AAB2CF"),
-        .init(id: "inverno.agrifoglio", name: "Agrifoglio", light: "3D6F52", dark: "A1B9AB"),
-        .init(id: "inverno.bacca", name: "Bacca", light: "A74253", dark: "D6A7AE"),
-        .init(id: "inverno.brina", name: "Brina", light: "436A7F", dark: "98B8C8"),
-        .init(id: "inverno.cenere", name: "Cenere", light: "6B6179", dark: "B6B0C1"),
+        .init(id: "primavera.ciliegio", name: "Ciliegio", light: "B52B66", dark: "E49EBC"),
+        .init(id: "primavera.germoglio", name: "Germoglio", light: "467022", dark: "8FC95F"),
+        .init(id: "primavera.glicine", name: "Glicine", light: "8542C0", dark: "C4A7DE"),
+        .init(id: "primavera.pesco", name: "Pesco", light: "AC401B", dark: "E8A189"),
+        .init(id: "primavera.cielo-aprile", name: "Cielo d’aprile", light: "1F6B8E", dark: "75BCDC"),
+        .init(id: "primavera.primula", name: "Primula", light: "766417", dark: "D6BC52"),
+        .init(id: "estate.mare", name: "Mare", light: "006C8D", dark: "31C9F6"),
+        .init(id: "estate.corallo", name: "Corallo", light: "BC280F", dark: "F19C8E"),
+        .init(id: "estate.oleandro", name: "Oleandro", light: "B2208A", dark: "E898D2"),
+        .init(id: "estate.menta", name: "Menta", light: "00725A", dark: "31F6CD"),
+        .init(id: "estate.cobalto", name: "Cobalto", light: "235BD5", dark: "99B3EA"),
+        .init(id: "estate.agrume", name: "Agrume", light: "8A5B00", dark: "F6B331"),
+        .init(id: "autunno.zucca", name: "Zucca", light: "995216", dark: "E5A56F"),
+        .init(id: "autunno.acero", name: "Acero", light: "AE3426", dark: "E5A199"),
+        .init(id: "autunno.senape", name: "Senape", light: "7B6219", dark: "D5B453"),
+        .init(id: "autunno.castagna", name: "Castagna", light: "805038", dark: "CFAC9A"),
+        .init(id: "autunno.vino", name: "Vino", light: "79334D", dark: "D6A5B7"),
+        .init(id: "autunno.bosco", name: "Bosco", light: "5F6A30", dark: "ABBA70"),
+        .init(id: "inverno.ardesia", name: "Ardesia", light: "4F6783", dark: "A5B5C7"),
+        .init(id: "inverno.mirtillo", name: "Mirtillo", light: "5451A1", dark: "B1AFD5"),
+        .init(id: "inverno.agrifoglio", name: "Agrifoglio", light: "23663E", dark: "65C58B"),
+        .init(id: "inverno.bacca", name: "Bacca", light: "9E3654", dark: "DCA3B3"),
+        .init(id: "inverno.brina", name: "Brina", light: "2A6D7D", dark: "79BDCD"),
+        .init(id: "inverno.cenere", name: "Cenere", light: "65655F", dark: "B3B3AE"),
     ]
     static func choices(mode: ThemeMode) -> [SubjectColorChoice] {
         values.map { value in
@@ -819,8 +828,12 @@ enum HalloweenTheme {
         v.shadows.medium = DesignSystem.Shadow(color: p.background.opacity(0.12), radius: 12, y: 4)
         v.shadows.high = DesignSystem.Shadow(color: p.background.opacity(0.16), radius: 24, y: 8)
         let base = ThemeVariant(mode: .light).subjectColors
+        let seasonalColors = SeasonalSubjectColors.choices(mode: mode)
         v.subjectColors = base.map { choice in
-            let seed = mode == .dark ? ThemeContrast.darkSeed(choice.ink) : choice.ink
+            // Seasonal variants already retain their hue/chroma in each mode.
+            // Reusing the classic white lift here would make the seasons look alike.
+            let seasonal = seasonalColors.first { $0.id == choice.id }
+            let seed = seasonal?.ink ?? (mode == .dark ? ThemeContrast.darkSeed(choice.ink) : choice.ink)
             return SubjectColorChoice(id: choice.id, name: choice.name, ink: ThemeContrast.accessibleInk(seed, mode: mode, surfaces: surfaces, tile: true, spotlight: p.spotlight))
         }
         func fell(_ size: CGFloat) -> Font { .custom("IM_FELL_English_Roman", fixedSize: size) }

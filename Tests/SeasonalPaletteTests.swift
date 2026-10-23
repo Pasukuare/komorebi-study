@@ -75,3 +75,62 @@ import AppKit
         let x = luminance(a), y = luminance(b); return (max(x,y) + 0.05) / (min(x,y) + 0.05)
     }
 }
+
+extension SeasonalPaletteTests {
+    func testSeasonalSwatchesRemainPerceptuallySeparatedInEveryThemeAndMode() {
+        func lab(_ color: Color) -> [Double] {
+            let c = ThemeContrast.rgb(color).map { $0 <= 0.04045 ? $0 / 12.92 : pow(($0 + 0.055) / 1.055, 2.4) }
+            let xyz = [(0.4124564*c[0]+0.3575761*c[1]+0.1804375*c[2])/0.95047,
+                       0.2126729*c[0]+0.7151522*c[1]+0.0721750*c[2],
+                       (0.0193339*c[0]+0.1191920*c[1]+0.9503041*c[2])/1.08883]
+            let f = xyz.map { $0 > 0.008856 ? pow($0, 1/3) : 7.787*$0+16/116 }
+            return [116*f[1]-16, 500*(f[0]-f[1]), 200*(f[1]-f[2])]
+        }
+        for package in ThemeRegistry.packages {
+            for mode in ThemeMode.allCases {
+                let theme = package.resolve(mode: mode)
+                for group in SubjectColorGroup.allCases where group != .classics {
+                    let colors = theme.subjectColors.filter { SubjectColorGroup.group(for: $0.id) == group }
+                    for i in colors.indices {
+                        for j in colors.indices where j > i {
+                            let distance = sqrt(zip(lab(colors[i].ink), lab(colors[j].ink)).reduce(0) { $0 + pow($1.0-$1.1, 2) })
+                            // A regression guard for collapsed swatches, not a guarantee of universal color recognition.
+                            XCTAssertGreaterThan(distance, 10, "\(package.id) \(mode) \(colors[i].id) / \(colors[j].id)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func testPaletteContactSheetsRenderAtActualSwatchSize() throws {
+        for package in ThemeRegistry.packages {
+            for mode in ThemeMode.allCases {
+                let theme = package.resolve(mode: mode)
+                let sheet = VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                    Text(package.name).font(theme.typography.title)
+                    ForEach(SubjectColorGroup.allCases) { group in
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                            Label(group.title, systemImage: group.symbol).font(theme.typography.heading)
+                            Text(group.paletteDescription).font(theme.typography.caption)
+                            HStack(spacing: DesignSystem.Spacing.sm) {
+                                ForEach(theme.subjectColors.filter { SubjectColorGroup.group(for: $0.id) == group }) { choice in
+                                    VStack(spacing: DesignSystem.Spacing.xs) {
+                                        Circle().fill(choice.ink).frame(width: DesignSystem.SubjectAppearance.swatch, height: DesignSystem.SubjectAppearance.swatch)
+                                        Text(L10n.tr(choice.name)).font(theme.typography.caption).foregroundStyle(choice.text)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }.padding(DesignSystem.Spacing.xl).foregroundStyle(theme.palette.textPrimary).background(theme.palette.background)
+                let renderer = ImageRenderer(content: sheet); renderer.scale = 2
+                let image = try XCTUnwrap(renderer.nsImage)
+                if let folder = ProcessInfo.processInfo.environment["KOMOREBI_PALETTE_RENDER"] {
+                    let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation)))
+                    try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: URL(fileURLWithPath: folder).appendingPathComponent("palette-\(package.id)-\(mode.rawValue).png"))
+                }
+            }
+        }
+    }
+}
