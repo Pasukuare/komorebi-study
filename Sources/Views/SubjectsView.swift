@@ -21,39 +21,20 @@ struct SubjectsView: View {
                     StudyEmptyState(symbol: "books.vertical", title: L10n.tr("Nessuna materia"), detail: L10n.tr("Aggiungi una materia per registrare le sessioni."), actionTitle: L10n.tr("Aggiungi materia")) { nameFocused = true }
                 }
                 Card {
-                    Text(editing == nil ? L10n.tr("Una nuova materia") : L10n.tr("Modifica materia")).font(appTheme.preservedTypography.headline)
-                    HStack(spacing: DesignSystem.Spacing.sm) {
-                        SubjectIconPicker(selection: $icon, color: appTheme.subjectColor(color))
-                        StudyTextEntry(L10n.tr("Nome della materia o progetto"), text: $name).focused($nameFocused).textFieldStyle(StudyTextFieldStyle())
-                    }
-                    HStack(spacing: DesignSystem.Spacing.md) {
-                        SubjectColorPicker(selection: $color, isEditing: editing != nil).id(editing?.id)
-                        Spacer(minLength: 0)
-                    }
+                    Text(L10n.tr("Una nuova materia")).font(appTheme.preservedTypography.headline)
+                    SubjectFormFields(name: $name, icon: $icon, color: $color, goal: $goal, nameFocused: $nameFocused, isEditing: false)
                     HStack {
-                        Text(L10n.tr("Ore / settimana")).foregroundStyle(appTheme.palette.textSecondary)
-                        Spacer()
-                        StudyNumberField(title: L10n.tr("Ore alla settimana"), value: $goal, range: 0...168, step: 0.5).frame(width: DesignSystem.TimerLayout.studyField)
-                    }
-                    HStack(spacing: DesignSystem.Spacing.sm) {
-                        SubjectIconTile(symbol: icon, color: appTheme.subjectColor(color))
-                        Text(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? L10n.tr("Materia") : name)
-                            .font(appTheme.typography.heading).foregroundStyle(appTheme.subjectColor(color)).lineLimit(2)
-                    }.accessibilityElement(children: .combine).accessibilityLabel(L10n.tr("Anteprima della materia"))
-                    HStack {
-                        if editing != nil { Button(L10n.tr("Annulla")) { editing = nil; name = "" } }
-                        Button(editing == nil ? L10n.tr("Aggiungi materia") : L10n.tr("Salva modifiche")) {
+                        Button(L10n.tr("Aggiungi materia")) {
                             let validGoal = goal.isFinite && goal >= 0 ? min(168, goal) : 5.0
                             let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                            if let editing { editing.name = trimmedName; editing.icon = icon; editing.color = color; editing.weeklyGoal = validGoal }
-                            else { store.context.insert(Subject(name: trimmedName, icon: icon, color: color, weeklyGoal: validGoal)) }
-                            if store.save() { name = ""; editing = nil }
+                            store.context.insert(Subject(name: trimmedName, icon: icon, color: color, weeklyGoal: validGoal))
+                            if store.save() { name = "" }
                         }.buttonStyle(ResponsiveButtonStyle(prominent: true)).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
                 ForEach(store.subjects) { s in
                     Card(identity: s.id.uuidString + s.name + s.icon + s.color + String(s.weeklyGoal)) {
-                        HStack { SubjectIconTile(symbol: s.icon, color: appTheme.subjectColor(s.color)); Text(s.name).font(appTheme.preservedTypography.title3).foregroundStyle(appTheme.subjectColor(s.color)); Spacer(); Button(L10n.tr("Modifica")) { editing = s; name = s.name; icon = s.icon; color = s.color; goal = s.weeklyGoal }; Button(L10n.tr("Elimina"), role: .destructive) { deleting = s }.disabled(store.active?.subjectID == s.id) }
+                        HStack { SubjectIconTile(symbol: s.icon, color: appTheme.subjectColor(s.color)); Text(s.name).font(appTheme.preservedTypography.title3).foregroundStyle(appTheme.subjectColor(s.color)); Spacer(); Button(L10n.tr("Modifica")) { editing = s }; Button(L10n.tr("Elimina"), role: .destructive) { deleting = s }.disabled(store.active?.subjectID == s.id) }
                         HStack(spacing: DesignSystem.Spacing.xl) {
                             subjectMetric(L10n.tr("Settimana"), value: store.total(in: store.week, subject: s.id))
                             let monthInterval = Calendar.current.dateInterval(of: .month, for: store.now) ?? DateInterval(start: store.now, end: store.now)
@@ -65,6 +46,107 @@ struct SubjectsView: View {
                     }
                 }
             }.padding(DesignSystem.Layout.contentPadding).frame(maxWidth: DesignSystem.Layout.contentMaximum).frame(maxWidth: .infinity)
-        }.defaultScrollAnchor(.top, for: .initialOffset).alert(L10n.tr("Eliminare la materia?"), isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) { Button(L10n.tr("Annulla"), role: .cancel) {}; Button(L10n.tr("Elimina"), role: .destructive) { if let deleting { if store.settings.lastSubject == deleting.id { store.settings.lastSubject = nil }; store.context.delete(deleting); store.save() }; deleting = nil } } message: { Text(L10n.tr("Le sessioni passate e il loro nome verranno conservati.")) }
+        }.defaultScrollAnchor(.top, for: .initialOffset)
+            .sheet(item: $editing) { SubjectEditor(subject: $0) }
+            .alert(L10n.tr("Eliminare la materia?"), isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) { Button(L10n.tr("Annulla"), role: .cancel) {}; Button(L10n.tr("Elimina"), role: .destructive) { if let deleting { if store.settings.lastSubject == deleting.id { store.settings.lastSubject = nil }; store.context.delete(deleting); store.save() }; deleting = nil } } message: { Text(L10n.tr("Le sessioni passate e il loro nome verranno conservati.")) }
+    }
+}
+
+/// Creation and editing share the same controls; opening an editor never changes the creation draft.
+private struct SubjectFormFields: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
+    @Environment(\.studyTheme) private var appTheme
+    @Binding var name: String
+    @Binding var icon: String
+    @Binding var color: String
+    @Binding var goal: Double
+    var nameFocused: FocusState<Bool>.Binding
+    var isEditing: Bool
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                SubjectIconPicker(selection: $icon, color: appTheme.subjectColor(color))
+                StudyTextEntry(L10n.tr("Nome della materia o progetto"), text: $name).focused(nameFocused).textFieldStyle(StudyTextFieldStyle())
+            }
+            HStack(spacing: DesignSystem.Spacing.md) {
+                SubjectColorPicker(selection: $color, isEditing: isEditing)
+                Spacer(minLength: 0)
+            }
+            HStack {
+                Text(L10n.tr("Ore / settimana")).foregroundStyle(appTheme.palette.textSecondary)
+                Spacer()
+                StudyNumberField(title: L10n.tr("Ore alla settimana"), value: $goal, range: 0...168, step: 0.5).frame(width: DesignSystem.TimerLayout.studyField)
+            }
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                SubjectIconTile(symbol: icon, color: appTheme.subjectColor(color))
+                Text(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? L10n.tr("Materia") : name)
+                    .font(appTheme.typography.heading).foregroundStyle(appTheme.subjectColor(color)).lineLimit(2)
+            }.accessibilityElement(children: .combine).accessibilityLabel(L10n.tr("Anteprima della materia"))
+
+        }
+    }
+}
+
+/// A value copy keeps Cancel (including Escape) independent of the persisted model.
+struct SubjectEditDraft {
+    var name: String
+    var icon: String
+    var color: String
+    var goal: Double
+    init(subject: Subject) {
+        name = subject.name; icon = subject.icon; color = subject.color; goal = subject.weeklyGoal
+    }
+    var isValid: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    func apply(to subject: Subject) {
+        subject.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        subject.icon = icon; subject.color = color
+        subject.weeklyGoal = goal.isFinite && goal >= 0 ? min(168, goal) : 5.0
+    }
+}
+
+struct SubjectEditor: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
+    @Environment(\.studyTheme) private var appTheme
+    @EnvironmentObject private var store: StudyStore
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var nameFocused: Bool
+    let subject: Subject
+    @State private var draft: SubjectEditDraft
+    @State private var saveFailed = false
+
+    init(subject: Subject) {
+        self.subject = subject
+        _draft = State(initialValue: SubjectEditDraft(subject: subject))
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            Text(L10n.tr("Modifica materia")).font(appTheme.preservedTypography.title2)
+            SubjectFormFields(name: $draft.name, icon: $draft.icon, color: $draft.color,
+                              goal: $draft.goal, nameFocused: $nameFocused, isEditing: true)
+            if saveFailed {
+                Text(L10n.tr("Impossibile salvare. Riprova."))
+                    .foregroundStyle(appTheme.appearance.destructiveInk)
+            }
+            HStack {
+                Button(L10n.tr("Annulla")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button(L10n.tr("Salva modifiche")) {
+                    guard draft.isValid else { return }
+                    let original = SubjectEditDraft(subject: subject)
+                    draft.apply(to: subject)
+                    if store.save() { dismiss() }
+                    else {
+                        // Restore only this subject, leaving unrelated pending context changes intact.
+                        subject.name = original.name; subject.icon = original.icon
+                        subject.color = original.color; subject.weeklyGoal = original.goal
+                        saveFailed = true
+                    }
+                }.buttonStyle(ResponsiveButtonStyle(prominent: true))
+                    .keyboardShortcut(.defaultAction).disabled(!draft.isValid)
+            }
+        }.padding(DesignSystem.PreservedGeometry.gap28)
+            .frame(width: DesignSystem.PreservedGeometry.points480)
+            .background(appTheme.palette.background)
+            .interactionHost(scope: "subject-editor")
     }
 }

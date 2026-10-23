@@ -1,7 +1,9 @@
 # Komorebi Study — passaggio di progetto
 
-Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 14** (ottimizzazione e controllo bug).
+Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 15** (pannello dedicato per modificare le materie).
 Destinatario: sviluppatore o agente incaricato di correggere bug, verificare le prestazioni e continuare lo sviluppo.
+
+La build 15 apre un editor dedicato con Salva/Annulla dal comando Modifica di ogni materia; creazione e modifica condividono i controlli ma non la bozza. Vedere `Docs/Editor-materie-build15.md` per verifiche e limiti.
 
 ## 1. Da leggere prima di iniziare
 
