@@ -73,13 +73,11 @@ struct SubjectIconPicker: View {
     @Binding var selection: String
     let color: Color
     @State private var showing = false
-    @FocusState private var focusedIcon: String?
+    @State private var focusedIcon: String?
+    @FocusState private var openerFocused: Bool
     @Environment(\.colorScheme) private var scheme
     var body: some View {
-        Button {
-            if showing, let focusedIcon { selection = focusedIcon; showing = false }
-            else { showing = true }
-        } label: {
+        Button(action: activate) {
             HStack(spacing: DesignSystem.Spacing.xs) {
                 SubjectIconTile(symbol: selection, color: color)
                 Image(systemName: "chevron.down").font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
@@ -88,7 +86,16 @@ struct SubjectIconPicker: View {
                 .background(appTheme.palette.surface, in: RoundedRectangle(cornerRadius: DesignSystem.Radius.control))
                 .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.control).stroke(appTheme.palette.border).allowsHitTesting(false))
                 .contentShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.control))
-        }.buttonStyle(.plain).interactiveHover().modifier(KeyboardFocusBorder())
+        }.buttonStyle(.plain).focusable(interactions: .edit).focusEffectDisabled().focused($openerFocused)
+            .interactiveHover().modifier(KeyboardFocusBorder(explicitFocus: openerFocused))
+            .onKeyPress(.return, phases: .down) { key in
+                guard key.modifiers.isEmpty else { return .ignored }
+                activate(); return .handled
+            }
+            .onKeyPress(.space, phases: .down) { key in
+                guard key.modifiers.isEmpty else { return .ignored }
+                activate(); return .handled
+            }
             .accessibilityLabel("Icona della materia").accessibilityValue(SubjectIcons.name(for: selection))
             .popover(isPresented: $showing, arrowEdge: .bottom) {
                 ScrollViewReader { proxy in
@@ -104,7 +111,7 @@ struct SubjectIconPicker: View {
                                                     .frame(width: DesignSystem.Interaction.controlHeight, height: DesignSystem.Interaction.controlHeight)
                                                     .overlay(RoundedRectangle(cornerRadius: DesignSystem.SubjectAppearance.radius).stroke(selection == icon.id || focusedIcon == icon.id ? color : .clear, lineWidth: DesignSystem.Interaction.focusWidth).allowsHitTesting(false))
                                                     .contentShape(RoundedRectangle(cornerRadius: DesignSystem.SubjectAppearance.radius))
-                                            }.id(icon.id).buttonStyle(.plain).focusable().focused($focusedIcon, equals: icon.id)
+                                            }.id(icon.id).buttonStyle(.plain)
                                                 .interactiveHover(cornerRadius: DesignSystem.SubjectAppearance.radius)
                                                 .help(icon.name).accessibilityLabel(icon.name)
                                                 .accessibilityAddTraits(selection == icon.id ? .isSelected : [])
@@ -123,6 +130,8 @@ struct SubjectIconPicker: View {
                             focusedIcon = SubjectIcons.all[min(SubjectIcons.all.count - 1, max(0, index + delta))].id
                         }
                         .background(PopoverKeyboardCapture { key in
+                            // The highlighted item is selection state, not native first-responder
+                            // focus: AppKit delivers these keys while the opener still has focus.
                             let index = SubjectIcons.all.firstIndex { $0.id == focusedIcon } ?? 0
                             let delta: Int
                             switch key {
@@ -140,6 +149,11 @@ struct SubjectIconPicker: View {
                         .onExitCommand { showing = false }
                 }.preferredColorScheme(scheme)
             }
+            .onChange(of: showing) { if !showing { openerFocused = true } }
+    }
+    private func activate() {
+        if showing, let focusedIcon { selection = focusedIcon; showing = false }
+        else { showing = true }
     }
 }
 struct SubjectColorPicker: View {
