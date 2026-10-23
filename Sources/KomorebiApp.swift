@@ -132,6 +132,7 @@ struct MenuPanel: View {
             ScrollView { panelContent }
         }.frame(width: DesignSystem.PreservedGeometry.points350).frame(maxHeight: DesignSystem.PreservedGeometry.points650).fixedSize(horizontal: false, vertical: true)
             .background(appTheme.palette.background).foregroundStyle(appTheme.palette.inheritedText)
+            .containerBackground(appTheme.palette.background, for: .window)
             .animation(interfaceAnimation(store.settings.animations, reduceMotion: reduceMotion), value: editingNote)
             .animation(interfaceAnimation(store.settings.animations, reduceMotion: reduceMotion), value: store.active == nil)
             .sheet(isPresented: $store.correctingEnd) { EndTimeEditor().environmentObject(store) }
