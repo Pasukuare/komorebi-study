@@ -1,7 +1,9 @@
 # Komorebi Study — passaggio di progetto
 
-Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 17** (palette stagionali più distinte).
+Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 18** (frasi personali facoltative nelle Impostazioni).
 Destinatario: sviluppatore o agente incaricato di correggere bug, verificare le prestazioni e continuare lo sviluppo.
+
+La build 18 aggiunge quattro frasi personali facoltative (Home, Timer, Obiettivo di oggi, barra dei menu), con salvataggio accorpato e nessuna frase predefinita. Vedere `Docs/Frasi-personali-build18.md`.
 
 La build 17 distingue le palette stagionali, preserva la tonalità in scuro e aggiunge descrizioni nel selettore. Classici e identificativi salvati invariati. Vedere `Docs/Palette-stagionali-build17.md`.
 

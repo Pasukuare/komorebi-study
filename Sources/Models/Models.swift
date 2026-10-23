@@ -73,7 +73,25 @@ extension StudySession {
         startDate = start; endDate = end; self.duration = duration; pauseDuration = pause
     }
 }
+/// Stable locations, independent of theme and interface language. User text is never translated.
+enum PersonalPhraseSlot: String, CaseIterable, Identifiable {
+    case home, timer, dailyGoal, menu
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .home: return L10n.tr("Home")
+        case .timer: return L10n.tr("Timer")
+        case .dailyGoal: return L10n.tr("Obiettivo di oggi")
+        case .menu: return L10n.tr("Barra dei menu")
+        }
+    }
+}
 struct UserSettings: Codable, Equatable {
+    var personalPhrases: [String: String]?
+    func personalPhrase(for slot: PersonalPhraseSlot) -> String? {
+        let text = personalPhrases?[slot.rawValue]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return text.isEmpty ? nil : text
+    }
     var dailyGoal = 3.0
     var weeklyGoal = 15.0
     var pomodoroDuration = 25.0

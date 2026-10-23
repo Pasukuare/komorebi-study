@@ -186,6 +186,7 @@ struct MenuPanel: View {
                 } else {
                     Text(appTheme.copy.text(.greeting, fallback: store.nextSubject == nil ? L10n.tr("Nessuna sessione attiva") : L10n.tr("Nessuna sessione attiva")))
                         .font(appTheme.preservedTypography.menuGreeting)
+                    PersonalPhrase(slot: .menu)
                     TimerSetup(compact: true)
                     SessionControls(fromMenu: true)
                 }

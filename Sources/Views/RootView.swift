@@ -157,6 +157,7 @@ struct HomeView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy7) {
                         Text(appTheme.copy.text(.timerSubtitle, fallback: "Timer")).font(appTheme.typography.timerTitle)
+                        PersonalPhrase(slot: .timer)
                     }
                     Spacer(minLength: DesignSystem.Spacing.md)
                     Button {
@@ -461,6 +462,7 @@ struct OverviewView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy7) {
                         Text(L10n.tr("Riepilogo")).font(appTheme.preservedTypography.homeTitle)
+                        PersonalPhrase(slot: .home)
                     }
                     Spacer()
                     if store.streak > 0 {
@@ -568,7 +570,24 @@ struct DailyGoalCard: View {
             }.frame(maxHeight: stretches ? .infinity : nil)
             Text(store.liveToday >= goal ? L10n.tr("Obiettivo raggiunto.") : L10n.tr("Tempo rimanente: %@" , String(describing: durationText(goal - store.liveToday))))
                 .font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary).frame(maxWidth: .infinity, alignment: .center)
+            PersonalPhrase(slot: .dailyGoal).frame(maxWidth: .infinity, alignment: .center)
             }
+        }
+    }
+}
+
+/// No fallback slogans or periodic rotation: empty preferences render no extra view.
+struct PersonalPhrase: View {
+    @EnvironmentObject private var store: StudyStore
+    @Environment(\.studyTheme) private var theme
+    let slot: PersonalPhraseSlot
+    var body: some View {
+        if let phrase = store.settings.personalPhrase(for: slot) {
+            Text(verbatim: phrase).font(theme.typography.caption).lineLimit(3)
+                .help(phrase).accessibilityLabel(phrase)
+                .foregroundStyle(theme.palette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
         }
     }
 }

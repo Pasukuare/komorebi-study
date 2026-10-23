@@ -29,6 +29,7 @@ struct SettingsView: View {
                         StudyDropdown(title: L10n.tr("Lingua dell’app"), options: AppLanguage.allCases.map { ($0.rawValue, $0.name) }, selection: Binding(get: { store.settings.appLanguage.rawValue }, set: { store.settings.language = $0 }))
                     }
                 }
+                PersonalPhrasesSettings()
                 SettingsCard(title: L10n.tr("Obiettivi")) {
                     SettingRow(L10n.tr("Obiettivo giornaliero"), detail: L10n.tr("Ore di studio al giorno.")) {
                         StudyNumberField(title: L10n.tr("Obiettivo giornaliero in ore"), value: $store.settings.dailyGoal, range: 0.25...24, step: 0.25)
@@ -328,5 +329,52 @@ ZStack {
                         }.frame(maxWidth: .infinity)
                     }.padding(DesignSystem.Spacing.md)
                 }.frame(height: DesignSystem.ThemeLayout.previewHeight).clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.control))
+    }
+}
+
+/// Debounce typing as one settings update; flush on leaving, deactivation or termination.
+/// This avoids rescheduling timer notifications for every character typed.
+private struct PersonalPhrasesSettings: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
+    @EnvironmentObject private var store: StudyStore
+    @Environment(\.studyTheme) private var theme
+    @Environment(\.komorebiSectionVisible) private var sectionVisible
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var drafts: [String: String] = [:]
+    @State private var loaded = false
+    var body: some View {
+        SettingsCard(title: L10n.tr("Frasi personali")) {
+            Text(L10n.tr("Scrivi le frasi che vuoi vedere. Lascia vuoto per mantenere i testi neutri."))
+                .font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+            ForEach(PersonalPhraseSlot.allCases) { slot in
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    Text(slot.title).font(theme.typography.small)
+                    StudyTextEntry(L10n.tr("La tua frase per %@", slot.title), text: Binding(
+                        get: { drafts[slot.rawValue] ?? "" },
+                        set: { drafts[slot.rawValue] = $0 }
+                    ), axis: .vertical).lineLimit(2...4).textFieldStyle(StudyTextFieldStyle())
+                }
+            }
+            Text(L10n.tr("Le frasi restano uguali in tutti i temi e non vengono tradotte."))
+                .font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+        }
+        .onAppear { drafts = store.settings.personalPhrases ?? [:]; loaded = true }
+        .task(id: drafts) {
+            guard loaded else { return }
+            do { try await Task.sleep(for: .milliseconds(450)) } catch { return }
+            persist()
+        }
+        .onChange(of: store.settings.personalPhrases) { drafts = store.settings.personalPhrases ?? [:] }
+        .onChange(of: sectionVisible) { if !sectionVisible { persist() } }
+        .onChange(of: scenePhase) { if scenePhase != .active { persist() } }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in persist() }
+        .onDisappear { persist() }
+    }
+    private func persist() {
+        guard loaded else { return }
+        let phrases = drafts.filter { !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let value: [String: String]? = phrases.isEmpty ? nil : phrases
+        guard value != store.settings.personalPhrases else { return }
+        store.settings.personalPhrases = value
     }
 }

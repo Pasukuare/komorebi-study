@@ -433,5 +433,12 @@
   "Fiori, germogli e cieli di primavera": "Blossoms, new leaves and spring skies",
   "Mare, agrumi e fioriture estive": "Sea, citrus and summer blooms",
   "Foglie d’acero, zucca e terra": "Maple leaves, pumpkin and earth",
-  "Ghiaccio, bacche e sempreverdi": "Ice, berries and evergreens"
+  "Ghiaccio, bacche e sempreverdi": "Ice, berries and evergreens",
+  "Frasi personali": "Personal messages",
+  "Scrivi le frasi che vuoi vedere. Lascia vuoto per mantenere i testi neutri.": "Write the messages you want to see. Leave blank to keep the neutral text.",
+  "La tua frase per %@": "Your message for %@",
+  "Le frasi restano uguali in tutti i temi e non vengono tradotte.": "Your messages stay the same in all themes and are not translated.",
+  "Barra dei menu": "Menu bar",
+  "Home": "Home",
+  "Timer": "Timer"
 }
