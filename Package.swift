@@ -1,3 +1,3 @@
 // swift-tools-version: 6.0
 import PackageDescription
-let package = Package(name: "KomorebiStudy", platforms: [.macOS(.v15)], products: [.executable(name: "KomorebiStudy", targets: ["KomorebiStudy"])], targets: [.executableTarget(name: "KomorebiStudy", path: "Sources", resources: [.copy("ThemeResources/Fonts")]), .testTarget(name: "KomorebiStudyTests", dependencies: ["KomorebiStudy"], path: "Tests")], swiftLanguageModes: [.v5])
+let package = Package(name: "KomorebiStudy", platforms: [.macOS(.v15)], products: [.executable(name: "KomorebiStudy", targets: ["KomorebiStudy"])], targets: [.executableTarget(name: "KomorebiStudy", path: "Sources", resources: [.copy("ThemeResources/Fonts"), .copy("ThemeResources/Translations.json")]), .testTarget(name: "KomorebiStudyTests", dependencies: ["KomorebiStudy"], path: "Tests")], swiftLanguageModes: [.v5])

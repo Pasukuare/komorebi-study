@@ -3,6 +3,7 @@ import AppKit
 
 // Shared dropdown extracted from the Home; its selection and popover behavior are preserved.
 struct StudyDropdown<Value: Hashable>: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     let title: String
     let options: [(Value, String)]
@@ -34,8 +35,8 @@ struct StudyDropdown<Value: Hashable>: View {
         }.buttonStyle(.plain).focusable().focusEffectDisabled().focused($fieldFocused)
             .opacity(enabled ? 1 : appTheme.appearance.disabledOpacity)
             .interactiveHover()
-            .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.control).inset(by: -DesignSystem.Interaction.focusInset).stroke(appTheme.palette.accent, lineWidth: fieldFocused ? DesignSystem.Interaction.focusWidth : 0).allowsHitTesting(false))
-            .accessibilityLabel(title).accessibilityValue(selectedIndex.map { options[$0].1 } ?? "Nessuna scelta")
+            .modifier(KeyboardFocusBorder(explicitFocus: fieldFocused))
+            .accessibilityLabel(title).accessibilityValue(selectedIndex.map { options[$0].1 } ?? L10n.tr("Nessuna scelta"))
             .onKeyPress(.downArrow) { showing = true; return .handled }
             .onKeyPress(.return) {
                 guard showing else { showing = true; return .handled }
@@ -57,10 +58,10 @@ struct StudyDropdown<Value: Hashable>: View {
                                     }.padding(DesignSystem.Spacing.sm)
                                         .frame(minHeight: DesignSystem.Interaction.controlHeight)
                                         .contentShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.control))
-                                        .foregroundStyle(rowFocused == index ? appTheme.palette.onAccentSurface : appTheme.palette.textPrimary)
-                                        .background(rowFocused == index ? appTheme.palette.accentSurface : .clear, in: RoundedRectangle(cornerRadius: DesignSystem.Radius.control))
-                                }.id(index).buttonStyle(.plain).onHover { if $0 { rowFocused = index } }
-                                    .interactiveHover()
+                                        .foregroundStyle(appTheme.palette.textPrimary)
+                                }.id(index).buttonStyle(.plain)
+                                    .interactiveHover(listRow: true, hoverChanged: { if $0 { rowFocused = index } })
+                                    .modifier(KeyboardFocusBorder(explicitFocus: rowFocused == index))
                                     .accessibilityAddTraits(selection == options[index].0 ? .isSelected : [])
                             }
                         }.padding(DesignSystem.Spacing.xs)
@@ -105,12 +106,14 @@ struct StudyDropdown<Value: Hashable>: View {
 }
 /// Scoped to this visible popover and this app; removed when the popover closes.
 struct PopoverKeyboardCapture: NSViewRepresentable {
+    @Environment(\.studyInteraction) private var interaction
     let action: (UInt16) -> Bool
-    func makeNSView(context: Context) -> KeyView { let view = KeyView(); view.action = action; return view }
-    func updateNSView(_ nsView: KeyView, context: Context) { nsView.action = action }
+    func makeNSView(context: Context) -> KeyView { let view = KeyView(); view.action = action; view.interaction = interaction; return view }
+    func updateNSView(_ nsView: KeyView, context: Context) { nsView.action = action; nsView.interaction = interaction }
     static func dismantleNSView(_ nsView: KeyView, coordinator: ()) { nsView.stop() }
     final class KeyView: NSView {
         var action: ((UInt16) -> Bool)?
+        weak var interaction: StudyInteractionSession?
         private var monitor: Any?
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow(); stop()
@@ -118,6 +121,7 @@ struct PopoverKeyboardCapture: NSViewRepresentable {
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                 guard let self, self.window?.isVisible == true,
                       event.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return event }
+                if StudyFocusPolicy.isNavigationKey(event.keyCode, modifiers: event.modifierFlags) { self.interaction?.setInput(.keyboard); self.interaction?.resetHover() }
                 return self.action?(event.keyCode) == true ? nil : event
             }
         }
@@ -137,7 +141,8 @@ struct StudyFieldChrome: ViewModifier {
             .frame(minHeight: DesignSystem.Interaction.controlHeight)
             .foregroundStyle(appTheme.palette.textPrimary)
             .background(appTheme.palette.surface, in: RoundedRectangle(cornerRadius: DesignSystem.Radius.control))
-            .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.control).stroke(focused ? appTheme.palette.accent : appTheme.palette.controlBorder, lineWidth: focused ? DesignSystem.Interaction.focusWidth : DesignSystem.PreservedGeometry.stroke1).allowsHitTesting(false))
+            .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.control).stroke(appTheme.palette.controlBorder, lineWidth: DesignSystem.PreservedGeometry.stroke1).allowsHitTesting(false))
+            .modifier(KeyboardFocusBorder(explicitFocus: focused))
             .contentShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.control))
             .simultaneousGesture(TapGesture().onEnded { if enabled { focused = true } })
             .interactiveHover(textEntry: true).opacity(enabled ? 1 : appTheme.appearance.disabledOpacity)
@@ -150,24 +155,27 @@ struct StudyTextFieldStyle: TextFieldStyle {
     }
 }
 struct StudyNumberField: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     let title: String
     @Binding var value: Double
     var range: ClosedRange<Double> = -1_000_000_000...1_000_000_000
     var step: Double = 1
-    @FocusState private var focused: Bool
+    private enum Part: Hashable { case minus, value, plus }
+    @FocusState private var focus: Part?
+    private var focused: Bool { focus == .value }
     @Environment(\.isEnabled) private var enabled
     var body: some View {
         HStack(spacing: 0) {
             adjustment("minus", delta: -step).disabled(value <= range.lowerBound)
             TextField(title, value: $value, format: .number)
-                .textFieldStyle(.plain).labelsHidden().focused($focused).multilineTextAlignment(.center).monospacedDigit()
+                .textFieldStyle(.plain).labelsHidden().focused($focus, equals: .value).focusEffectDisabled().multilineTextAlignment(.center).monospacedDigit()
                 .frame(minWidth: DesignSystem.Spacing.xxl)
                 .frame(height: DesignSystem.Interaction.controlHeight)
                 .contentShape(Rectangle())
-                .simultaneousGesture(TapGesture().onEnded { if enabled { focused = true } })
+                .simultaneousGesture(TapGesture().onEnded { if enabled { focus = .value } })
                 .onSubmit { commit() }
-                .onChange(of: focused) { if !focused { commit() } }
+                .onChange(of: focus) { old, new in if old == .value && new != .value { commit() } }
                 .onKeyPress(.upArrow) { adjust(step); return .handled }
                 .onKeyPress(.downArrow) { adjust(-step); return .handled }
                 .accessibilityLabel(title)
@@ -175,7 +183,8 @@ struct StudyNumberField: View {
         }
         .frame(height: DesignSystem.Interaction.controlHeight)
         .background(appTheme.palette.surface, in: Capsule())
-        .overlay(Capsule().stroke(focused ? appTheme.palette.accent : appTheme.palette.controlBorder, lineWidth: focused ? DesignSystem.Interaction.focusWidth : DesignSystem.PreservedGeometry.stroke1).allowsHitTesting(false))
+        .overlay(Capsule().stroke(appTheme.palette.controlBorder, lineWidth: DesignSystem.PreservedGeometry.stroke1).allowsHitTesting(false))
+        .modifier(KeyboardFocusBorder(radius: DesignSystem.Radius.panel, explicitFocus: focus != nil))
         .contentShape(Capsule()).interactiveHover(cornerRadius: DesignSystem.Radius.panel)
         .opacity(enabled ? 1 : appTheme.appearance.disabledOpacity)
         .accessibilityElement(children: .contain)
@@ -186,9 +195,9 @@ struct StudyNumberField: View {
                 .frame(width: DesignSystem.Interaction.controlHeight, height: DesignSystem.Interaction.controlHeight)
                 .contentShape(Rectangle())
         }.buttonStyle(.plain).foregroundStyle(appTheme.palette.accent)
-            .modifier(KeyboardFocusBorder(radius: DesignSystem.Radius.panel))
+            .focusEffectDisabled().focused($focus, equals: delta < 0 ? .minus : .plus)
             .opacity(delta < 0 && value <= range.lowerBound || delta > 0 && value >= range.upperBound ? appTheme.appearance.disabledOpacity : 1)
-            .accessibilityLabel((delta > 0 ? "Aumenta " : "Riduci ") + title)
+            .accessibilityLabel((delta > 0 ? L10n.tr("Aumenta ") : L10n.tr("Riduci ")) + title)
     }
     private func commit() {
         value = value.isFinite ? min(range.upperBound, max(range.lowerBound, value)) : range.lowerBound
@@ -218,9 +227,10 @@ struct StudyToggleStyle: ToggleStyle {
                             Circle().fill(appTheme.palette.onAction).frame(width: DesignSystem.ControlGeometry.toggleThumb, height: DesignSystem.ControlGeometry.toggleThumb).padding(DesignSystem.ControlGeometry.toggleInset).allowsHitTesting(false)
                         }
                         .overlay(Capsule().stroke(appTheme.palette.controlBorder.opacity(appTheme.appearance.controlBorderOpacity)).allowsHitTesting(false))
-                }.frame(minHeight: DesignSystem.Interaction.controlHeight)
+                }.padding(.horizontal, DesignSystem.Spacing.xs)
+                    .frame(minHeight: DesignSystem.Interaction.controlHeight)
                     .contentShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.control))
-            }.buttonStyle(.plain).interactiveHover()
+            }.buttonStyle(.plain).interactiveHover(listRow: true)
                 .modifier(KeyboardFocusBorder())
                 .opacity(enabled ? 1 : appTheme.appearance.disabledOpacity)
                 .animation(reduceMotion || motion == "Off" ? nil : .easeOut(duration: DesignSystem.ControlGeometry.toggleDuration), value: configuration.isOn)

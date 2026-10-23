@@ -3,6 +3,24 @@ import SwiftData
 import UserNotifications
 import AppKit
 
+/// A separate publisher prevents a one-second tick from invalidating every section.
+/// The store still publishes calendar-boundary changes for daily summaries and themes.
+@MainActor final class StudyClock: ObservableObject {
+    @Published private(set) var now: Date
+    private var day: Date
+    private var zone: TimeZone
+    init(now: Date = Date(), calendar: Calendar = .current) {
+        self.now = now; day = calendar.startOfDay(for: now); zone = calendar.timeZone
+    }
+    func crossesCalendarBoundary(_ date: Date, calendar: Calendar = .current) -> Bool {
+        day != calendar.startOfDay(for: date) || zone != calendar.timeZone
+    }
+    func update(_ date: Date, calendar: Calendar = .current) {
+        day = calendar.startOfDay(for: date); zone = calendar.timeZone
+        if now != date { now = date }
+    }
+}
+
 @MainActor final class StudyStore: ObservableObject {
     let audio = AmbientAudio()
     let container: ModelContainer
@@ -17,12 +35,24 @@ import AppKit
                 settings = sanitized
                 isSanitizing = false
             }
+            L10n.language = settings.appLanguage
+            if oldValue.appLanguage != settings.appLanguage {
+                defaults.set([settings.appLanguage.rawValue], forKey: "AppleLanguages")
+                NativeAppLanguageMenus.refresh()
+            }
             persistSettings()
             scheduleNotification()
         }
     }
     @Published var active: ActiveTimer?
-    @Published var now = Date()
+    let clock = StudyClock()
+    var now: Date {
+        get { clock.now }
+        set {
+            if clock.crossesCalendarBoundary(newValue) { objectWillChange.send() }
+            clock.update(newValue)
+        }
+    }
     @Published var sessions: [StudySession] = []
     @Published var exams: [StudyExam] = []
     @Published var subjects: [Subject] = []
@@ -49,13 +79,13 @@ import AppKit
         set { objectWillChange.send(); defaults.set(newValue, forKey: "showMenuTime") }
     }
     var stateText: String {
-        guard let a = active else { return nextSubject == nil ? "Pronto per studiare" : "Prossima sessione pronta" }
-        if a.isBreak { return a.pausedAt == nil ? "Intervallo in corso" : "Intervallo in attesa" }
-        return a.pausedAt == nil ? "Studio in corso" : "Sessione sospesa"
+        guard let a = active else { return nextSubject == nil ? L10n.tr("Nessuna sessione attiva") : L10n.tr("Sessione configurata") }
+        if a.isBreak { return a.pausedAt == nil ? L10n.tr("Intervallo in corso") : L10n.tr("Intervallo in attesa") }
+        return a.pausedAt == nil ? L10n.tr("Studio in corso") : L10n.tr("Sessione sospesa")
     }
     var actionTitle: String {
-        guard let a = active else { return "Inizia a studiare" }
-        return a.pausedAt == nil ? "Sospendi" : a.isBreak ? "Avvia pausa" : "Riprendi"
+        guard let a = active else { return L10n.tr("Inizia a studiare") }
+        return a.pausedAt == nil ? L10n.tr("Sospendi") : a.isBreak ? L10n.tr("Avvia pausa") : L10n.tr("Riprendi")
     }
     var studying: Bool { active.map { !$0.isBreak && $0.pausedAt == nil } ?? false }
     var liveToday: Double { today + activeContribution(in: day) }
@@ -80,7 +110,7 @@ import AppKit
     }
     func pauseForSleep(at date: Date = Date()) {
         guard pauseOnSleep, active?.pausedAt == nil, active != nil else { return }
-        active?.pause(at: date); now = date; statusMessage = "Timer sospeso durante lo stop. Riprendi quando sei pronto."
+        active?.pause(at: date); now = date; statusMessage = L10n.tr("Timer sospeso durante lo stop.")
         persistActive(); scheduleNotification()
     }
     private let defaults: UserDefaults
@@ -102,6 +132,7 @@ import AppKit
         var loadedSettings = defaults.data(forKey: "settings").flatMap { try? JSONDecoder().decode(UserSettings.self, from: $0) } ?? UserSettings()
         loadedSettings.sanitize()
         settings = loadedSettings
+        L10n.language = loadedSettings.appLanguage
         active = defaults.data(forKey: "active").flatMap { try? JSONDecoder().decode(ActiveTimer.self, from: $0) }
         cycles = defaults.integer(forKey: "cycles")
         nextSubject = defaults.string(forKey: "nextSubject").flatMap(UUID.init(uuidString:))
@@ -121,11 +152,15 @@ import AppKit
             if active?.pausedAt == nil, active != nil {
                 let checkpoint = defaults.object(forKey: "lastCheckpoint") as? Date
                 active?.pause(at: max(active!.start, checkpoint ?? active!.start))
-                statusMessage = "Sessione recuperata e sospesa. Controlla il tempo prima di riprendere."
+                statusMessage = L10n.tr("Sessione recuperata e sospesa. Controlla il tempo prima di riprendere.")
                 persistActive()
             }
         }
         tick(); scheduleNotification()
+    }
+    deinit {
+        ticker?.invalidate()
+        if let sleepObserver { NSWorkspace.shared.notificationCenter.removeObserver(sleepObserver) }
     }
     /// Runs before the UI and timer start. A failed backup/save aborts opening without a partial migration.
     @discardableResult func migrateSubjectColorIDs(archiveURL: URL? = nil) throws -> Int {
@@ -156,10 +191,10 @@ import AppKit
             sessions = try context.fetch(FetchDescriptor<StudySession>(sortBy: [SortDescriptor(\.startDate, order: .reverse)]))
             exams = try context.fetch(FetchDescriptor<StudyExam>(sortBy: [SortDescriptor(\.date)]))
             subjects = try context.fetch(FetchDescriptor<Subject>(sortBy: [SortDescriptor(\.name)]))
-        } catch { self.error = error.localizedDescription }
+        } catch { self.error = L10n.errorMessage(error) }
     }
     @discardableResult func save() -> Bool {
-        do { try context.save(); refresh(); return true } catch { self.error = error.localizedDescription; return false }
+        do { try context.save(); refresh(); return true } catch { self.error = L10n.errorMessage(error); return false }
     }
     var preparedSubject: Subject? {
         subjects.first { $0.id == (nextSubject ?? settings.lastSubject) } ?? subjects.first
@@ -169,14 +204,14 @@ import AppKit
         preparedMode == .stopwatch ? nil : min(86400, max(60, (preparedMode == .pomodoro ? settings.pomodoroDuration : settings.customMinutes) * 60))
     }
     var preparedSummary: String {
-        preparedMode.rawValue + (preparedTarget.map { " · " + durationText($0) } ?? " · senza limite")
+        preparedMode.displayName + (preparedTarget.map { " · " + durationText($0) } ?? L10n.tr(" · senza limite"))
     }
     func chooseSubject(_ id: UUID?) { settings.lastSubject = id; nextSubject = nil }
     func chooseMode(_ mode: TimerMode) { settings.preferredMode = mode; nextMode = nil }
     func start() {
         guard active == nil else { return }
         let subject = preparedSubject
-        guard let subject else { error = "Aggiungi una materia prima di iniziare."; return }
+        guard let subject else { error = L10n.tr("Aggiungi una materia prima di iniziare."); return }
         settings.lastSubject = subject.id
         let mode = preparedMode
         let target = preparedTarget
@@ -193,13 +228,13 @@ import AppKit
         now = Date()
         if active != nil { defaults.set(now, forKey: "lastCheckpoint") }
         if let active, active.pausedAt == nil, let target = active.target, active.elapsed(at: now) >= target { finish(natural: true) }
-        if systemIntegration { NSApp?.dockTile.badgeLabel = active.map { $0.isBreak ? "Pausa" : clockText($0.displayed(at: now)) } }
+        if systemIntegration { NSApp?.dockTile.badgeLabel = active.map { $0.isBreak ? L10n.tr("Pausa") : clockText($0.displayed(at: now)) } }
     }
     func finish(natural: Bool = false, at suppliedEnd: Date? = nil, fromMenu: Bool = false) {
         guard let a = active else { return }
         menuCompletion = fromMenu
         let finishTime = suppliedEnd ?? Date()
-        guard finishTime >= a.start, finishTime <= Date() else { error = "La fine deve essere compresa tra inizio e adesso."; return }
+        guard finishTime >= a.start, finishTime <= Date() else { error = L10n.tr("La fine deve essere compresa tra inizio e adesso."); return }
         let spans = a.activity(until: finishTime)
         let elapsed = spans?.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) } ?? a.elapsed(at: finishTime)
         let duration = natural ? (a.target ?? elapsed) : min(elapsed, a.target ?? elapsed)
@@ -248,8 +283,8 @@ import AppKit
         center.removePendingNotificationRequests(withIdentifiers: ["timer"])
         guard settings.notifications, let a = active, a.pausedAt == nil, a.target != nil else { return }
         let content = UNMutableNotificationContent()
-        content.title = a.isBreak ? "Si ricomincia" : "Sessione completata"
-        content.body = a.isBreak ? "La prossima sessione è pronta." : "È ora di fare una pausa."
+        content.title = a.isBreak ? L10n.tr("Sessione configurata") : L10n.tr("Sessione completata")
+        content.body = a.isBreak ? L10n.tr("Pausa completata.") : L10n.tr("Sessione completata.")
         if settings.sounds { content.sound = .default }
         center.add(UNNotificationRequest(identifier: "timer", content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(1, a.displayed(at: Date())), repeats: false)))
     }
@@ -257,9 +292,9 @@ import AppKit
         Task {
             do {
                 settings.notifications = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
-                if !settings.notifications { error = "Notifiche non autorizzate. Puoi abilitarle nelle Impostazioni di Sistema." }
+                if !settings.notifications { error = L10n.tr("Notifiche non autorizzate. Puoi abilitarle nelle Impostazioni di Sistema.") }
                 scheduleNotification()
-            } catch { self.error = error.localizedDescription }
+            } catch { self.error = L10n.errorMessage(error) }
         }
     }
     func total(in interval: DateInterval, subject: UUID? = nil) -> Double {

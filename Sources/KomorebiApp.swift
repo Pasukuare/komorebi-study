@@ -3,7 +3,8 @@ import AppKit
 import UserNotifications
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) { UNUserNotificationCenter.current().delegate = self }
+    func applicationDidFinishLaunching(_ notification: Notification) { UNUserNotificationCenter.current().delegate = self; NativeAppLanguageMenus.refresh() }
+    func applicationDidBecomeActive(_ notification: Notification) { NativeAppLanguageMenus.refresh() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) { completionHandler([.banner, .sound]) }
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
@@ -19,8 +20,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var store: StudyStore
     init() {
+        let preview = Bundle.main.bundleIdentifier?.hasPrefix("com.komorebi.study.preview") == true
+        if !preview, let data = UserDefaults.standard.data(forKey: "settings"), let settings = try? JSONDecoder().decode(UserSettings.self, from: data) { L10n.language = settings.appLanguage }
         do { try ThemeFonts.register() } catch {
-            let alert = NSAlert(); alert.messageText = "Impossibile caricare i font del tema"; alert.informativeText = error.localizedDescription; alert.runModal()
+            let alert = NSAlert(); alert.messageText = L10n.tr("Impossibile caricare i font del tema"); alert.informativeText = L10n.errorMessage(error); alert.runModal()
             fatalError("Local theme font registration failed: \(error)")
         }
         do {
@@ -32,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             if preview { Self.configurePreview(instance) }
             _store = StateObject(wrappedValue: instance) }
         catch {
-            let alert = NSAlert(); alert.messageText = "Impossibile aprire l’archivio"; alert.informativeText = "I dati non sono stati cancellati. \(error.localizedDescription)"; alert.runModal()
+            let alert = NSAlert(); alert.messageText = L10n.tr("Impossibile aprire l’archivio"); alert.informativeText = L10n.tr("I dati non sono stati cancellati. %@" , String(describing: L10n.errorMessage(error))); alert.runModal()
             fatalError("Cannot open persistent store: \(error)")
         }
     }
@@ -76,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 if Bundle.main.bundleIdentifier == "com.komorebi.study.preview" { MenuPanel().environment(\.komorebiMotion, store.settings.animations).buttonStyle(ResponsiveButtonStyle()).textFieldStyle(StudyTextFieldStyle()).toggleStyle(StudyToggleStyle()) }
                 else { RootView() }
             }.environmentObject(store)
+                .environment(\.locale, store.settings.appLanguage.locale)
                 .task {
                     // In-memory previews omit system integrations, but UI tests need a live clock.
                     guard Bundle.main.bundleIdentifier?.hasPrefix("com.komorebi.study.preview") == true else { return }
@@ -93,33 +97,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .sidebar) {
-                Button(store.settings.showsSidebar ? "Nascondi barra laterale" : "Mostra barra laterale") {
+                Button(store.settings.showsSidebar ? L10n.tr("Nascondi barra laterale") : L10n.tr("Mostra barra laterale")) {
                     store.settings.sidebarIsVisible = !store.settings.showsSidebar
                 }.keyboardShortcut("s", modifiers: [.control, .command]).disabled(store.focus)
             }
-            CommandMenu("Studio") {
-                Button("Avvia sessione") { store.start() }.keyboardShortcut(.return, modifiers: .command).disabled(store.active != nil)
-                Button("Pausa / Riprendi") { store.toggle() }.keyboardShortcut("p", modifiers: [.command, .shift])
-                Button("Termina sessione") { store.finish() }.keyboardShortcut(".", modifiers: .command).disabled(store.active == nil)
+            CommandMenu(L10n.tr("Studio")) {
+                Button(L10n.tr("Avvia sessione")) { store.start() }.keyboardShortcut(.return, modifiers: .command).disabled(store.active != nil)
+                Button(L10n.tr("Pausa / Riprendi")) { store.toggle() }.keyboardShortcut("p", modifiers: [.command, .shift])
+                Button(L10n.tr("Termina sessione")) { store.finish() }.keyboardShortcut(".", modifiers: .command).disabled(store.active == nil)
             }
         }
         MenuBarExtra {
-            MenuPanel().environmentObject(store).environment(\.komorebiMotion, store.settings.animations).buttonStyle(ResponsiveButtonStyle()).textFieldStyle(StudyTextFieldStyle()).toggleStyle(StudyToggleStyle())
+            MenuPanel().environmentObject(store).environment(\.locale, store.settings.appLanguage.locale).environment(\.komorebiMotion, store.settings.animations).buttonStyle(ResponsiveButtonStyle()).textFieldStyle(StudyTextFieldStyle()).toggleStyle(StudyToggleStyle())
                 .studyTheme(store.settings, date: store.now)
                 .preferredColorScheme(store.settings.appearance == "System" ? nil : store.settings.appearance == "Dark" ? .dark : .light)
         } label: {
+            LiveStudyTime { date in
             HStack(spacing: DesignSystem.Spacing.xxs) {
                 Image(systemName: store.studying ? "book" : "book.closed")
                     .contentTransition(.symbolEffect(.replace))
                 if store.showMenuTime, let a = store.active {
-                    Text((a.pausedAt != nil ? "Ⅱ " : a.isBreak ? "↳ " : "") + clockText(a.displayed(at: store.now))).monospacedDigit()
+                    Text((a.pausedAt != nil ? "Ⅱ " : a.isBreak ? "↳ " : "") + clockText(a.displayed(at: date))).monospacedDigit()
                 }
             }.accessibilityLabel(ProductText.name + ": " + store.stateText)
                 .help(store.stateText)
+            }.environmentObject(store)
         }.menuBarExtraStyle(.window)
     }
 }
 struct MenuPanel: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     @Environment(\.openWindow) var openWindow
@@ -131,8 +138,12 @@ struct MenuPanel: View {
             panelContent
             ScrollView { panelContent }
         }.frame(width: DesignSystem.PreservedGeometry.points350).frame(maxHeight: DesignSystem.PreservedGeometry.points650).fixedSize(horizontal: false, vertical: true)
-            .background(appTheme.palette.background).foregroundStyle(appTheme.palette.inheritedText)
+            .background(appTheme.palette.background.ignoresSafeArea()).foregroundStyle(appTheme.palette.inheritedText)
+            .ignoresSafeArea()
             .containerBackground(appTheme.palette.background, for: .window)
+            .background(MenuPanelWindowSurface(color: NSColor(appTheme.palette.background)).allowsHitTesting(false).accessibilityHidden(true))
+            .renderingLifecycle(allowInactive: true)
+            .interactionHost(scope: "menu")
             .animation(interfaceAnimation(store.settings.animations, reduceMotion: reduceMotion), value: editingNote)
             .animation(interfaceAnimation(store.settings.animations, reduceMotion: reduceMotion), value: store.active == nil)
             .sheet(isPresented: $store.correctingEnd) { EndTimeEditor().environmentObject(store) }
@@ -142,36 +153,38 @@ struct MenuPanel: View {
     var panelContent: some View {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy18) {
                 HStack {
-                    Label(ProductText.wordmark, systemImage: store.studying ? "book" : "book.closed")
+                    ThemeBrand()
                         .font(appTheme.preservedTypography.menuWordmark).foregroundStyle(appTheme.palette.accent)
                     Spacer()
                     Button { showApp() } label: { Image(systemName: "arrow.up.right.square") }
-                        .help("Apri app").accessibilityLabel(ProductText.openAccessible)
+                        .help(L10n.tr("Apri app")).accessibilityLabel(ProductText.openAccessible)
                 }
                 SessionStatusPill()
                 if let a = store.active {
                     VStack(alignment: .leading, spacing: DesignSystem.PreservedGeometry.gap10) {
                         Text(a.subjectName).font(appTheme.preservedTypography.headline).fixedSize(horizontal: false, vertical: true)
+                        LiveStudyTime { date in
                         HStack(alignment: .firstTextBaseline) {
                             if appTheme.cifreCellaFissa {
-                                ThemeFixedTimerDigits(text: clockText(a.displayed(at: store.now)), pointSize: appTheme.typography.menuTimerPointSize)
+                                ThemeFixedTimerDigits(text: clockText(a.displayed(at: date)), pointSize: appTheme.typography.menuTimerPointSize)
                                     .frame(height: appTheme.typography.timerLineHeight(at: appTheme.typography.menuTimerPointSize))
-                                    .accessibilityLabel("Tempo").accessibilityValue(clockText(a.displayed(at: store.now)))
+                                    .accessibilityLabel(L10n.tr("Tempo")).accessibilityValue(clockText(a.displayed(at: date)))
                             } else {
-                            Text(clockText(a.displayed(at: store.now)))
+                            Text(clockText(a.displayed(at: date)))
                                 .font(appTheme.preservedTypography.menuTimerDigits).monospacedDigit()
                                 .contentTransition(.numericText()).minimumScaleFactor(DesignSystem.PreservedGeometry.minimumScale0_6).lineLimit(1)
                             }
                             Spacer()
-                            Text(a.isBreak ? "Intervallo" : a.mode.rawValue).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                            Text(a.isBreak ? "Intervallo" : a.mode.displayName).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary)
                         }
                         if let target = a.target {
-                            ProgressView(value: min(target, a.elapsed(at: store.now)), total: target).tint(a.isBreak ? appTheme.palette.interval : appTheme.palette.accent)
+                            ProgressView(value: min(target, a.elapsed(at: date)), total: target).tint(a.isBreak ? appTheme.palette.interval : appTheme.palette.accent)
                         }
+                    }
                     }
                     SessionControls(fromMenu: true)
                 } else {
-                    Text(appTheme.copy.text(.greeting, fallback: store.nextSubject == nil ? "Il prossimo passo è tuo." : "Pronto per ricominciare."))
+                    Text(appTheme.copy.text(.greeting, fallback: store.nextSubject == nil ? L10n.tr("Nessuna sessione attiva") : L10n.tr("Nessuna sessione attiva")))
                         .font(appTheme.preservedTypography.menuGreeting)
                     TimerSetup(compact: true)
                     SessionControls(fromMenu: true)
@@ -179,59 +192,61 @@ struct MenuPanel: View {
                 if let session = store.completed {
                     VStack(alignment: .leading, spacing: DesignSystem.PreservedGeometry.gap10) {
                         HStack {
-                            Label("Salvata · " + durationText(session.duration), systemImage: "checkmark.circle.fill")
+                            Label(L10n.tr("Salvata · ") + durationText(session.duration), systemImage: "checkmark.circle.fill")
                                 .font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.accent)
                             Spacer()
                             if !editingNote {
-                                Button("Nota") { editingNote = true }.font(appTheme.preservedTypography.caption)
+                                Button(L10n.tr("Nota")) { editingNote = true }.font(appTheme.preservedTypography.caption)
                                 Button { store.completed = nil } label: { Image(systemName: "xmark") }
-                                    .accessibilityLabel("Chiudi conferma di salvataggio")
+                                    .accessibilityLabel(L10n.tr("Chiudi conferma di salvataggio"))
                             }
                         }
                         if editingNote {
-                            StudyTextEntry("Una nota per la prossima volta…", text: $note, axis: .vertical).interactiveHover(textEntry: true).lineLimit(2...4).textFieldStyle(StudyTextFieldStyle())
+                            StudyTextEntry(L10n.tr("Nota della sessione…"), text: $note, axis: .vertical).interactiveHover(textEntry: true).lineLimit(2...4).textFieldStyle(StudyTextFieldStyle())
                             HStack {
-                                Button("Annulla") { note = session.note; editingNote = false }
+                                Button(L10n.tr("Annulla")) { note = session.note; editingNote = false }
                                 Spacer()
-                                Button("Salva nota") { session.note = note; if store.save() { store.completed = nil } }
+                                Button(L10n.tr("Salva nota")) { session.note = note; if store.save() { store.completed = nil } }
                             }
                         }
                     }.padding(DesignSystem.Spacing.sm).background(appTheme.palette.accent.opacity(appTheme.appearance.opacity0_07), in: RoundedRectangle(cornerRadius: DesignSystem.Radius.action))
                 }
                 if let message = store.statusMessage {
-                    Label(message, systemImage: "info.circle").font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                    Label(L10n.message(message), systemImage: "info.circle").font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary)
                 }
                 if let error = store.error {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                         Label(error, systemImage: "exclamationmark.triangle").font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.appearance.destructiveInk)
                         HStack {
-                            Button("Chiudi") { store.error = nil }
+                            Button(L10n.tr("Chiudi")) { store.error = nil }
                             if store.active != nil && store.active?.isBreak == false {
-                                Button("Riprova salvataggio") { store.error = nil; store.finish(fromMenu: true) }
+                                Button(L10n.tr("Riprova salvataggio")) { store.error = nil; store.finish(fromMenu: true) }
                             }
                         }.font(appTheme.preservedTypography.caption)
                     }
                 }
                 Divider()
+                LiveStudyTime { _ in
                 VStack(spacing: DesignSystem.Spacing.xs) {
                     HStack {
-                        Text("Il tuo studio di oggi").foregroundStyle(appTheme.palette.textSecondary)
+                        Text(L10n.tr("Studio di oggi")).foregroundStyle(appTheme.palette.textSecondary)
                         Spacer()
                         Text(durationText(store.liveToday) + " / " + durationText(store.settings.dailyGoal * 3600)).monospacedDigit()
                     }.font(appTheme.preservedTypography.caption)
                     ProgressView(value: min(store.liveToday, store.settings.dailyGoal * 3600), total: store.settings.dailyGoal * 3600).tint(appTheme.palette.accent)
                 }
+                }
                 HStack {
-                    Button("Apri timer") { store.openTimer = true; showApp() }.font(appTheme.preservedTypography.caption)
+                    Button(L10n.tr("Apri timer")) { store.openTimer = true; showApp() }.font(appTheme.preservedTypography.caption)
                     Spacer()
                     Menu {
                         if store.active?.isBreak == false {
-                            Button("Correggi ora di fine…") { store.finishDate = Date(); store.correctingEnd = true }
+                            Button(L10n.tr("Correggi ora di fine…")) { store.finishDate = Date(); store.correctingEnd = true }
                         }
                         Button(ProductText.open) { showApp() }
                         Divider()
                         Button(ProductText.quit) { NSApp.terminate(nil) }
-                    } label: { Image(systemName: "ellipsis").frame(width: DesignSystem.Interaction.controlHeight, height: DesignSystem.Interaction.controlHeight).contentShape(Rectangle()) }.menuStyle(.borderlessButton).fixedSize().interactiveHover().help("Altre azioni")
+                    } label: { Image(systemName: "ellipsis").frame(width: DesignSystem.Interaction.controlHeight, height: DesignSystem.Interaction.controlHeight).contentShape(Rectangle()) }.menuStyle(.borderlessButton).fixedSize().interactiveHover().help(L10n.tr("Altre azioni"))
                 }
             }.padding(DesignSystem.Spacing.lg)
     }
@@ -244,19 +259,68 @@ struct MenuPanel: View {
     }
 }
 struct EndTimeEditor: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     var fromMenu = true
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy18) {
-            Text("Correggi fine sessione").font(appTheme.preservedTypography.title2)
-            Text("Il periodo successivo all’ora scelta sarà escluso dallo studio.").foregroundStyle(appTheme.palette.textSecondary)
-            DatePicker("Fine", selection: $store.finishDate, in: (store.active?.start ?? Date.distantPast)...Date()).interactiveHover()
+            Text(L10n.tr("Correggi fine sessione")).font(appTheme.preservedTypography.title2)
+            Text(L10n.tr("Il periodo successivo all’ora scelta sarà escluso dallo studio.")).foregroundStyle(appTheme.palette.textSecondary)
+            DatePicker(L10n.tr("Fine"), selection: $store.finishDate, in: (store.active?.start ?? Date.distantPast)...Date()).interactiveHover()
             HStack {
-                Button("Annulla") { store.correctingEnd = false }
+                Button(L10n.tr("Annulla")) { store.correctingEnd = false }
                 Spacer()
-                Button("Termina e salva") { store.error = nil; store.finish(at: store.finishDate, fromMenu: fromMenu); if store.error == nil { store.correctingEnd = false } }.buttonStyle(ResponsiveButtonStyle(prominent: true))
+                Button(L10n.tr("Termina e salva")) { store.error = nil; store.finish(at: store.finishDate, fromMenu: fromMenu); if store.error == nil { store.correctingEnd = false } }.buttonStyle(ResponsiveButtonStyle(prominent: true))
             }
         }.padding(DesignSystem.Spacing.xl).frame(width: DesignSystem.PreservedGeometry.points400)
+    }
+}
+
+/// Paint the complete menu window, including host margins outside SwiftUI's safe area.
+/// Scoped to MenuPanel; the main window and native sidebar are unaffected.
+struct MenuPanelWindowSurface: NSViewRepresentable {
+    let color: NSColor
+    func makeNSView(context: Context) -> Host { Host(color: color) }
+    func updateNSView(_ view: Host, context: Context) { view.color = color; view.apply() }
+    final class Host: NSView {
+        var color: NSColor
+        init(color: NSColor) { self.color = color; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); apply() }
+        func apply() {
+            guard let window else { return }
+            window.backgroundColor = color
+            window.isOpaque = true
+            window.contentView?.wantsLayer = true
+            window.contentView?.layer?.backgroundColor = color.cgColor
+        }
+    }
+}
+
+/// Translate AppKit-owned menu labels without replacing actions or shortcuts.
+@MainActor enum NativeAppLanguageMenus {
+    static func refresh() {
+        DispatchQueue.main.async { if let menu = NSApp?.mainMenu { translate(menu) } }
+    }
+    static func translate(_ menu: NSMenu) {
+        let headings = ["File": "File", "Edit": "Modifica", "Modifica": "Modifica", "View": "Vista", "Vista": "Vista", "Window": "Finestra", "Finestra": "Finestra", "Help": "Aiuto", "Aiuto": "Aiuto"]
+        let actions = ["orderFrontStandardAboutPanel:": "Informazioni su Komorebi Study", "hide:": "Nascondi Komorebi Study", "hideOtherApplications:": "Nascondi altre", "unhideAllApplications:": "Mostra tutte", "terminate:": "Esci da Komorebi", "performMiniaturize:": "Riduci a icona", "performZoom:": "Ingrandisci", "arrangeInFront:": "Porta tutto in primo piano", "cut:": "Taglia", "copy:": "Copia", "paste:": "Incolla", "selectAll:": "Seleziona tutto", "undo:": "Annulla operazione", "redo:": "Ripeti", "performClose:": "Chiudi finestra", "showHelp:": "Aiuto"]
+        for item in menu.items {
+            if menu === NSApp?.mainMenu, let key = headings[item.title] {
+                item.title = L10n.tr(key)
+                item.submenu?.title = item.title
+            }
+            if let action = item.action {
+                if let key = actions[NSStringFromSelector(action)] { item.title = L10n.tr(key) }
+                if NSStringFromSelector(action) == "toggleFullScreen:" {
+                    item.title = L10n.tr(NSApp?.keyWindow?.styleMask.contains(.fullScreen) == true ? "Disattiva modalità a tutto schermo" : "Attiva modalità a tutto schermo")
+                }
+            }
+            // Services is a system submenu rather than a command action.
+            if let submenu = item.submenu, submenu === NSApp?.servicesMenu { item.title = L10n.tr("Servizi") }
+            if let submenu = item.submenu { translate(submenu) }
+        }
     }
 }

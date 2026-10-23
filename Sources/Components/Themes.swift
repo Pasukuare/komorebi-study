@@ -420,9 +420,9 @@ enum ThemeEmptyIllustration { case standard, ghost }
 struct ThemeCopy {
     var emptyIllustration: ThemeEmptyIllustration = .standard
     var overrides: [ThemeTextKey: String] = [:]
-    func text(_ key: ThemeTextKey, fallback: String) -> String { overrides[key] ?? fallback }
+    func text(_ key: ThemeTextKey, fallback: String) -> String { L10n.tr(overrides[key] ?? fallback) }
     func streak(_ days: Int) -> String {
-        text(days == 1 ? .streakSingular : .streak, fallback: days == 1 ? "%d giorno di costanza" : "%d giorni di costanza").replacingOccurrences(of: "%d", with: String(days))
+        text(days == 1 ? .streakSingular : .streak, fallback: days == 1 ? "Serie: %d giorno" : "Serie: %d giorni").replacingOccurrences(of: "%d", with: String(days))
     }
 }
 struct ThemeVariant {
@@ -482,7 +482,7 @@ struct ResolvedTheme {
     var motion: ThemeMotion { variant.motion }
     var shadows: ThemeShadows { variant.shadows }
     var subjectColors: [SubjectColorChoice] { variant.subjectColors }
-    var copy: ThemeCopy { option(ThemeOptionID.themedText) ? package.themedCopy ?? package.copy : package.copy }
+    var copy: ThemeCopy { (optionValues[ThemeOptionID.themedText] ?? false) ? package.themedCopy ?? package.copy : package.copy }
     func subjectChoice(_ id: String) -> SubjectColorChoice {
         let canonical = SubjectColorID.canonical(id)
         if let choice = subjectColors.first(where: { $0.id == canonical }) { return choice }
@@ -495,7 +495,7 @@ enum ThemeRegistry {
     static let packages: [ThemePackage] = [ThemePackage(
         id: "komorebi", name: "Komorebi", subtitle: "Luce tra le foglie",
         light: ThemeVariant(mode: .light), dark: ThemeVariant(mode: .dark), copy: ThemeCopy(),
-        behavior: ThemeBehavior(initialColorTab: .currentSeason, replacesLandscapes: false, supportsSeason: true, suggestionWindow: nil), options: [ThemeOption(id: ThemeOptionID.followSeason, title: "Segui la stagione", detail: "Un accento diverso, con il ritmo dell’anno.", defaultValue: false)]), HalloweenTheme.package]
+        behavior: ThemeBehavior(initialColorTab: .currentSeason, replacesLandscapes: false, supportsSeason: true, suggestionWindow: nil), options: [ThemeOption(id: ThemeOptionID.followSeason, title: "Segui la stagione", detail: "Colore d’accento in base alla stagione.", defaultValue: false)], logoMark: .pagesAndLight), HalloweenTheme.package]
     private static let seasonalVariants: [String: ThemeVariant] = {
         var result: [String: ThemeVariant] = [:]
         for package in packages where package.behavior.supportsSeason {
@@ -587,7 +587,7 @@ enum SubjectColorGroup: String, CaseIterable, Identifiable {
     case classics = "classici", spring = "primavera", summer = "estate", autumn = "autunno", winter = "inverno"
     var id: String { rawValue }
     var title: String {
-        switch self { case .classics: return "Classici"; case .spring: return "Primavera"; case .summer: return "Estate"; case .autumn: return "Autunno"; case .winter: return "Inverno" }
+        switch self { case .classics: return L10n.tr("Classici"); case .spring: return L10n.tr("Primavera"); case .summer: return L10n.tr("Estate"); case .autumn: return L10n.tr("Autunno"); case .winter: return L10n.tr("Inverno") }
     }
     var symbol: String {
         switch self { case .classics: return "circle.grid.2x2"; case .spring: return "camera.macro"; case .summer: return "sun.max"; case .autumn: return "leaf"; case .winter: return "snowflake" }
@@ -675,7 +675,7 @@ enum ThemeFonts {
     enum FontError: LocalizedError {
         case missing(String), registration(String)
         var errorDescription: String? {
-            switch self { case .missing(let file): return "Manca il font locale \(file)."; case .registration(let file): return "Impossibile incorporare il font \(file)." }
+            switch self { case .missing(let file): return L10n.tr("Manca il font locale %@.", file); case .registration(let file): return L10n.tr("Impossibile incorporare il font %@.", file) }
         }
     }
 }
@@ -730,15 +730,14 @@ enum HalloweenTheme {
         id: "halloween", name: "Halloween", subtitle: "Luna, zucche e lucciole",
         light: variant(.light), dark: variant(.dark), copy: ThemeCopy(),
         themedCopy: ThemeCopy(emptyIllustration: .ghost, overrides: [
-            .timerSubtitle: "La notte è lunga, una cosa alla volta.",
-            .homeSubtitle: "Accendi una piccola luce sul tuo prossimo passo.",
-            .greeting: "Un po’ di luce per il prossimo passo.",
-            .streak: "%d notti di fila", .streakSingular: "%d notte di fila"
+            .timerSubtitle: "Timer",
+            .homeSubtitle: "Riepilogo delle sessioni.",
+            .greeting: "Nessuna sessione attiva",
+            .streak: "Serie: %d giorni", .streakSingular: "Serie: %d giorno"
         ]),
         behavior: ThemeBehavior(initialColorTab: .season(.autumn), replacesLandscapes: true, supportsSeason: false,
             suggestionWindow: ThemeSuggestionWindow(startMonth: 10, startDay: 15, endMonth: 11, endDay: 1)), options: [
-                ThemeOption(id: ThemeOptionID.decorations, title: "Decorazioni", detail: "Luna, rami e piccole luci nella notte.", defaultValue: true),
-                ThemeOption(id: ThemeOptionID.themedText, title: "Testi a tema", detail: "Un tono notturno per saluti, sottotitoli e serie.", defaultValue: false)], cifreCellaFissa: true, logoMark: .jackOLantern)
+                ThemeOption(id: ThemeOptionID.decorations, title: "Decorazioni", detail: "Luna, rami e piccole luci nella notte.", defaultValue: true)], cifreCellaFissa: true, logoMark: .jackOLantern)
     static func variant(_ mode: ThemeMode) -> ThemeVariant {
         var v = ThemeVariant(mode: mode)
         var p = v.palette
@@ -993,16 +992,18 @@ extension StudyStore {
 
 /// Brand resources and their visual tokens belong to the package, independent of its name.
 struct ThemeLogoMark {
-    enum Artwork: Equatable { case systemSymbol(String), jackOLantern }
+    enum Artwork: Equatable { case systemSymbol(String), jackOLantern, pagesAndLight }
     enum ColorToken { case accent }
     var artwork: Artwork
     var colorToken: ColorToken = .accent
     var width: CGFloat = 32
     var height: CGFloat = 28
+    var discOpacity = 0.6
     var glowEnabled = false
     var glowStart = Color.clear
     var glowEnd = Color.clear
     var glowOpacity = 0.18
+    static let pagesAndLight = ThemeLogoMark(artwork: .pagesAndLight)
     static let leaf = ThemeLogoMark(artwork: .systemSymbol("leaf.fill"))
     static let jackOLantern = ThemeLogoMark(artwork: .jackOLantern, glowEnabled: true,
         glowStart: .themeHex("F5E6B8"), glowEnd: .themeHex("E8872E"))
@@ -1023,6 +1024,7 @@ struct ThemeLogoView: View {
     @Environment(\.komorebiMotion) private var motion
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.komorebiRendering) private var rendering
     @Environment(\.komorebiSectionVisible) private var sectionVisible
     private var illuminated: Bool { theme.logoMark.glowEnabled && theme.mode == .dark && theme.decorationsEnabled }
     private var moving: Bool { illuminated && ThemeAnimationPolicy.moving(visible: scenePhase != .background, decorations: theme.decorationsEnabled, reduceMotion: reduceMotion, animations: motion) }
@@ -1031,9 +1033,14 @@ struct ThemeLogoView: View {
         Group {
             switch mark.artwork {
             case .systemSymbol(let name): Image(systemName: name)
+            case .pagesAndLight:
+                ZStack {
+                    KomorebiPagesShape().fill(mark.tint(in: theme.palette))
+                    KomorebiLightDisc().fill(mark.tint(in: theme.palette).opacity(mark.discOpacity))
+                }.frame(width: mark.width, height: mark.height)
             case .jackOLantern:
                 ZStack {
-                    if illuminated { CompositedCandleGlow(mark: mark, decoration: theme.decoration, moving: moving && sectionVisible) }
+                    if illuminated { CompositedCandleGlow(mark: mark, decoration: theme.decoration, moving: moving && sectionVisible && rendering.ambientMotion) }
                     JackOLanternShape().fill(mark.tint(in: theme.palette), style: FillStyle(eoFill: true))
                 }.frame(width: mark.width, height: mark.height)
             }
@@ -1095,6 +1102,7 @@ struct TimerGlyphMetrics {
 }
 /// Shared by Timer, Focus, breaks and the large menu-bar time. No per-character transitions.
 struct ThemeFixedTimerDigits: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var theme
     let text: String
     let pointSize: CGFloat
@@ -1110,7 +1118,7 @@ struct ThemeFixedTimerDigits: View {
             }
             .alignmentGuide(.firstTextBaseline) { dimensions in dimensions.height / 2 + font.capHeight / 2 }
             .shadow(color: theme.typography.timerGlow.opacity(theme.typography.timerGlowOpacity), radius: theme.typography.timerGlowRadius)
-            .accessibilityElement(children: .ignore).accessibilityLabel("Tempo").accessibilityValue(text)
+            .accessibilityElement(children: .ignore).accessibilityLabel(L10n.tr("Tempo")).accessibilityValue(text)
             .transaction { $0.animation = nil }
         }
     }
@@ -1192,5 +1200,43 @@ enum CandleOpacitySamples {
     static func values(decoration: ThemeDecoration) -> [Double] {
         let count = max(1, Int(ceil(decoration.candlePeriod / decoration.ringFrameInterval)))
         return (0...count).map { ThemeAnimationPolicy.candleOpacity(elapsed: Double($0) / Double(count) * decoration.candlePeriod, decoration: decoration, active: true) }
+    }
+}
+
+
+/// Approved D artwork: two circular lenses at ±35°, plus a separate light disc.
+/// Coordinates are shared with the delivered SVG master, on a 128-unit grid.
+struct KomorebiPagesShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let offset = sqrt(56.0 * 56 - 44.0 * 44)
+        let angle = atan2(44.0, offset)
+        var lens = Path()
+        lens.move(to: CGPoint(x: 0, y: -44))
+        lens.addArc(center: CGPoint(x: -offset, y: 0), radius: 56,
+                    startAngle: .radians(-angle), endAngle: .radians(angle), clockwise: false)
+        lens.addArc(center: CGPoint(x: offset, y: 0), radius: 56,
+                    startAngle: .radians(.pi - angle), endAngle: .radians(.pi + angle), clockwise: false)
+        lens.closeSubpath()
+        var pages = Path()
+        for (x, degrees) in [(35.0, -35.0), (93.0, 35.0)] {
+            let radians = degrees * .pi / 180
+            pages.addPath(lens, transform: CGAffineTransform(a: cos(radians) * 0.76, b: sin(radians) * 0.76,
+                c: -sin(radians) * 0.76, d: cos(radians) * 0.76, tx: x, ty: 73))
+        }
+        return pages.applying(KomorebiBrandGeometry.fit(in: rect))
+    }
+}
+struct KomorebiLightDisc: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path(ellipseIn: CGRect(x: 50, y: 14, width: 28, height: 28))
+            .applying(KomorebiBrandGeometry.fit(in: rect))
+    }
+}
+enum KomorebiBrandGeometry {
+    static func fit(in rect: CGRect) -> CGAffineTransform {
+        // Tight optical viewport removes master padding without changing the artwork.
+        let scale = min(rect.width / 104, rect.height / 92)
+        return CGAffineTransform(a: scale, b: 0, c: 0, d: scale,
+            tx: rect.midX - 64 * scale, ty: rect.midY - 58 * scale)
     }
 }

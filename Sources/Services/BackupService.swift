@@ -20,7 +20,7 @@ struct SubjectRecord: Codable {
 struct Backup: Codable { var version = 1; var settings: UserSettings; var subjects: [SubjectRecord]; var sessions: [SessionRecord]; var exams: [ExamRecord]? = nil }
 @MainActor extension StudyStore {
     func export(csv: Bool) {
-        let panel = NSSavePanel(); panel.nameFieldStringValue = csv ? "Komorebi-sessioni.csv" : "Komorebi-backup.json"; panel.allowedContentTypes = [csv ? .commaSeparatedText : .json]
+        let panel = NSSavePanel(); panel.title = csv ? L10n.tr("Esporta CSV") : L10n.tr("Backup JSON"); panel.prompt = L10n.tr("Salva"); panel.nameFieldStringValue = csv ? "Komorebi-sessioni.csv" : "Komorebi-backup.json"; panel.allowedContentTypes = [csv ? .commaSeparatedText : .json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let data: Data
@@ -37,17 +37,17 @@ struct Backup: Codable { var version = 1; var settings: UserSettings; var subjec
                 data = try encoder.encode(Backup(settings: settings, subjects: subjects.map(SubjectRecord.init), sessions: sessions.map(SessionRecord.init), exams: exams.map(ExamRecord.init)))
             }
             try data.write(to: url, options: .atomic)
-        } catch { self.error = error.localizedDescription }
+        } catch { self.error = L10n.errorMessage(error) }
     }
     func restore() {
-        guard active == nil else { error = "Termina la sessione prima di importare un backup."; return }
+        guard active == nil else { error = L10n.tr("Termina la sessione prima di importare un backup."); return }
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.json]; panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
             let backup = try decoder.decode(Backup.self, from: Data(contentsOf: url))
             guard backup.version == 1, (backup.exams ?? []).allSatisfy({ !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }), backup.sessions.allSatisfy({ $0.duration.isFinite && $0.pause.isFinite && $0.duration >= 0 && $0.pause >= 0 && $0.end >= $0.start && $0.duration + $0.pause <= $0.end.timeIntervalSince($0.start) + 2 }), backup.subjects.allSatisfy({ !$0.name.isEmpty && $0.weeklyGoal.isFinite && $0.weeklyGoal >= 0 }), backup.settings.dailyGoal > 0, backup.settings.weeklyGoal > 0 else { throw CocoaError(.fileReadCorruptFile) }
-            let alert = NSAlert(); alert.messageText = "Importa backup locale"; alert.informativeText = "Verranno aggiunte le sessioni e le materie mancanti. I dati esistenti saranno conservati. Le impostazioni verranno aggiornate."; alert.addButton(withTitle: "Importa"); alert.addButton(withTitle: "Annulla")
+            let alert = NSAlert(); alert.messageText = L10n.tr("Importa backup locale"); alert.informativeText = L10n.tr("Verranno aggiunte le sessioni e le materie mancanti. I dati esistenti saranno conservati. Le impostazioni verranno aggiornate."); alert.addButton(withTitle: L10n.tr("Importa")); alert.addButton(withTitle: L10n.tr("Annulla"))
             guard alert.runModal() == .alertFirstButtonReturn else { return }
             var subjectIDs = Set(subjects.map(\.id)); var sessionIDs = Set(sessions.map(\.id))
             for s in backup.subjects where subjectIDs.insert(s.id).inserted {
@@ -58,7 +58,7 @@ struct Backup: Codable { var version = 1; var settings: UserSettings; var subjec
             for exam in backup.exams ?? [] where examIDs.insert(exam.id).inserted { context.insert(exam.model) }
             do { try context.save() } catch { context.rollback(); throw error }
             settings = backup.settings; settings.onboarded = true; refresh()
-        } catch { self.error = "Backup non importato: \(error.localizedDescription)" }
+        } catch { self.error = L10n.tr("Backup non importato: %@" , String(describing: L10n.errorMessage(error))) }
     }
 }
 

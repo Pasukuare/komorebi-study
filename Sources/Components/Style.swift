@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import AppKit
 
 extension Color {
@@ -141,7 +142,8 @@ enum DesignSystem {
         static let spotlightRadius: CGFloat = 140, spotlightOpacity = 0.10
         static let controlHeight: CGFloat = 44, actionHeight: CGFloat = 48
         static let thumbSize: CGFloat = 14, sliderTrack: CGFloat = 3
-        static let focusWidth: CGFloat = 2, focusInset: CGFloat = 3
+        static let focusWidth: CGFloat = 2, focusInset: CGFloat = 2
+        static let nativeProbeOpacity = 1.0 / 65_536
         static let breatheScale: CGFloat = 1.02, breatheDuration = 2.0
         static let controlsTimeout: UInt64 = 2_000_000_000
         static let sectionOffset: CGFloat = 8
@@ -334,68 +336,101 @@ extension EnvironmentValues {
         set { self[MotionLevelKey.self] = newValue }
     }
 }
+/// Only this small subtree listens to seconds. Hidden/inactive subtrees keep their
+/// identity and drafts, but do not schedule body updates for a ticking clock.
+struct LiveStudyTime<Content: View>: View {
+    @EnvironmentObject private var store: StudyStore
+    @Environment(\.komorebiSectionVisible) private var visible
+    @Environment(\.komorebiRendering) private var rendering
+    @State private var date: Date?
+    var updatesWhenIdle = false
+    @ViewBuilder let content: (Date) -> Content
+    var body: some View {
+        content(date ?? store.now)
+            .onReceive(store.clock.$now) { next in
+                guard visible, rendering.visible, updatesWhenIdle || (store.active?.pausedAt == nil && store.active != nil) else { return }
+                date = next
+            }
+            .onAppear { date = store.now }
+            .onChange(of: visible) { if visible { date = store.now } }
+            .onChange(of: rendering.visible) { if rendering.visible { date = store.now } }
+            .onChange(of: store.active?.id) { date = store.now }
+            .onChange(of: store.active?.pausedAt) { date = store.now }
+    }
+}
+
 func interfaceAnimation(_ level: String, reduceMotion: Bool) -> Animation? {
     guard level != "Off", !reduceMotion else { return nil }
     return level == "Full" ? .spring(response: DesignSystem.PreservedMotion.springResponse, dampingFraction: DesignSystem.PreservedMotion.springDamping) : .easeOut(duration: DesignSystem.Interaction.hoverDuration)
 }
-/// A small hit area around the control gives a soft proximity response without changing layout.
+/// One owner per pointer, with no focus/spotlight state attached to a label alone.
 struct InteractiveHover: ViewModifier {
     @Environment(\.studyTheme) private var appTheme
-    var cornerRadius: CGFloat = DesignSystem.Radius.control
-    var textEntry = false
-    var decorative = false
+    @Environment(\.studyInteraction) private var session
+    @Environment(\.isFocused) private var focused
     @Environment(\.isEnabled) private var enabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.komorebiMotion) private var motion
-    @Environment(\.komorebiSectionVisible) private var sectionVisible
+    @Environment(\.komorebiSectionVisible) private var visible
+    @Environment(\.komorebiRendering) private var rendering
+    var cornerRadius: CGFloat = DesignSystem.Radius.control
+    var textEntry = false
+    var decorative = false
+    var listRow = false
+    var shape: StudyControlShape = .rounded
+    var selected = false
+    var identity: AnyHashable? = nil
+    var hoverChanged: ((Bool) -> Void)? = nil
     @State private var hovering = false
     @State private var location = CGPoint.zero
-    @State private var cursorPushed = false
-    private var active: Bool { enabled && sectionVisible && hovering }
+    @State private var inputKind: StudyInputKind = .none
+    private var active: Bool { enabled && visible && rendering.visible && hovering && !(focused && inputKind == .keyboard) }
     func body(content: Content) -> some View {
-        content
-            .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
+        content.contentShape(StudySurfaceShape(kind: shape, radius: cornerRadius))
+            .background {
+                StudyPointerTarget(session: session, eligible: enabled && visible && rendering.visible, decorative: decorative, textEntry: textEntry, radius: cornerRadius, shape: shape) { inside, point in
+                    if hovering != inside { hovering = inside; hoverChanged?(inside) }
+                    if inside && StudyHoverAppearance.spotlight(mode: appTheme.mode, listRow: listRow, selected: selected) && location != point { location = point }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity).opacity(DesignSystem.Interaction.nativeProbeOpacity).allowsHitTesting(false).accessibilityHidden(true)
+            }
             .overlay {
-                GeometryReader { geometry in
-                    let shape = RoundedRectangle(cornerRadius: cornerRadius)
-                    let light = RadialGradient(colors: [appTheme.palette.spotlight.opacity(DesignSystem.Interaction.spotlightOpacity), .clear], center: UnitPoint(x: location.x / max(1, geometry.size.width), y: location.y / max(1, geometry.size.height)), startRadius: 0, endRadius: DesignSystem.Interaction.spotlightRadius)
-                    shape.fill(light).opacity(active ? 1 : 0)
-                    shape.stroke(light, lineWidth: DesignSystem.Interaction.focusWidth).opacity(active ? 1 : 0)
-                    shape.stroke(appTheme.palette.accent.opacity(active ? appTheme.appearance.opacity0_30 : 0), lineWidth: DesignSystem.PreservedGeometry.stroke1)
-                    shape.stroke(appTheme.palette.accent.opacity(active ? appTheme.appearance.opacity0_10 : 0), lineWidth: DesignSystem.Interaction.focusWidth).blur(radius: DesignSystem.Spacing.xxs)
-                }.allowsHitTesting(false)
+                StudyHoverDecoration(active: active, location: location, radius: cornerRadius, shape: shape, listRow: listRow, selected: selected)
+                    .allowsHitTesting(false).accessibilityHidden(true)
             }
-            .offset(y: active && !decorative && !reduceMotion && motion != "Off" ? -DesignSystem.Interaction.hoverLift : 0)
-            .onContinuousHover { phase in
-                guard sectionVisible else { hovering = false; resetCursor(); return }
-                switch phase {
-                case .active(let point):
-                    location = point; hovering = true
-                    if enabled && !decorative && !cursorPushed {
-                        (textEntry ? NSCursor.iBeam : .pointingHand).push(); cursorPushed = true
-                    }
-                case .ended: hovering = false; resetCursor()
-                }
-            }
-            .onChange(of: enabled) { if !enabled { hovering = false; resetCursor() } }
-            .onChange(of: sectionVisible) { if !sectionVisible { hovering = false; resetCursor() } }
-            .onDisappear { resetCursor() }
+            .offset(y: StudyHoverAppearance.lifts(active: active, listRow: listRow, decorative: decorative, reduceMotion: reduceMotion, motion: motion) ? -DesignSystem.Interaction.hoverLift : 0)
+            .onReceive(session?.$input.eraseToAnyPublisher() ?? Just(.none).eraseToAnyPublisher()) { inputKind = $0 }
+            .onChange(of: visible) { if !visible { hovering = false; hoverChanged?(false) } }
+            .onChange(of: rendering.visible) { if !rendering.visible { hovering = false; hoverChanged?(false) } }
+            .onChange(of: enabled) { if !enabled { hovering = false; hoverChanged?(false) } }
+            .onChange(of: identity) { session?.resetHover(); hovering = false; hoverChanged?(false) }
+            .onDisappear { hovering = false; hoverChanged?(false) }
             .animation(motion == "Off" || reduceMotion ? nil : .easeOut(duration: DesignSystem.Interaction.hoverDuration), value: active)
     }
-    private func resetCursor() { if cursorPushed { NSCursor.pop(); cursorPushed = false } }
 }
 extension View {
-    func interactiveHover(cornerRadius: CGFloat = DesignSystem.Radius.control, textEntry: Bool = false, decorative: Bool = false) -> some View {
-        modifier(InteractiveHover(cornerRadius: cornerRadius, textEntry: textEntry, decorative: decorative))
+    func interactiveHover(cornerRadius: CGFloat = DesignSystem.Radius.control, textEntry: Bool = false, decorative: Bool = false, listRow: Bool = false, shape: StudyControlShape = .rounded, selected: Bool = false, identity: AnyHashable? = nil, hoverChanged: ((Bool) -> Void)? = nil) -> some View {
+        modifier(InteractiveHover(cornerRadius: cornerRadius, textEntry: textEntry, decorative: decorative, listRow: listRow, shape: shape, selected: selected, identity: identity, hoverChanged: hoverChanged))
     }
 }
 struct KeyboardFocusBorder: ViewModifier {
-    @Environment(\.studyTheme) private var appTheme
+    @Environment(\.studyInteraction) private var session
     @Environment(\.isFocused) private var focused
+    @FocusState private var controlFocused: Bool
     var radius: CGFloat = DesignSystem.Radius.control
     var explicitFocus: Bool? = nil
-    func body(content: Content) -> some View {
-        content.overlay(RoundedRectangle(cornerRadius: radius).inset(by: -DesignSystem.Interaction.focusInset).stroke(appTheme.palette.accent, lineWidth: (explicitFocus ?? focused) ? DesignSystem.Interaction.focusWidth : 0).allowsHitTesting(false))
+    var shape: StudyControlShape = .rounded
+    @ViewBuilder func body(content: Content) -> some View {
+        if let explicitFocus {
+            // Keep existing component bindings intact; never attach a competing one.
+            content.focusEffectDisabled().overlay { outline(explicitFocus) }
+        } else {
+            // Plain buttons outside a ButtonStyle need their own focus binding.
+            // Style labels also inherit isFocused from the button itself.
+            content.focused($controlFocused).focusEffectDisabled().overlay { outline(controlFocused || focused) }
+        }
+    }
+    @ViewBuilder private func outline(_ active: Bool) -> some View {
+        if let session { KeyboardFocusOutline(session: session, focused: active, radius: radius, shape: shape) }
     }
 }
 struct StudyActionStyle: ButtonStyle {
@@ -425,9 +460,8 @@ struct StudyActionStyle: ButtonStyle {
                 .shadow(color: appTheme.shadows.medium.color.opacity(dark ? 0 : 1), radius: appTheme.shadows.medium.radius, y: appTheme.shadows.medium.y)
                 .scaleEffect(configuration.isPressed && animated ? DesignSystem.Interaction.pressedScale : 1)
                 .opacity(enabled ? 1 : appTheme.appearance.disabledOpacity)
-                .onHover { hover = $0 }
                 .modifier(KeyboardFocusBorder(radius: DesignSystem.Radius.action))
-                .interactiveHover(cornerRadius: DesignSystem.Radius.action)
+                .interactiveHover(cornerRadius: DesignSystem.Radius.action, hoverChanged: { hover = $0 })
                 .animation(animated ? .easeOut(duration: DesignSystem.Interaction.hoverDuration) : nil, value: configuration.isPressed)
                 .animation(animated ? .easeOut(duration: DesignSystem.Interaction.hoverDuration) : nil, value: hover)
         }
@@ -443,15 +477,15 @@ struct ResponsiveButtonStyle: ButtonStyle {
         configuration.label
             .padding(.horizontal, DesignSystem.Spacing.sm).padding(.vertical, DesignSystem.Spacing.xs)
             .frame(minHeight: DesignSystem.Interaction.controlHeight)
-            .contentShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.control))
+            .contentShape(RoundedRectangle(cornerRadius: DesignSystem.PreservedGeometry.radius9))
             .foregroundStyle((enabled ? nil : appTheme.palette.disabledText) ?? (configuration.role == .destructive ? appTheme.appearance.destructiveInk : prominent ? appTheme.palette.onAccentSurface : appTheme.palette.accent))
             .background(configuration.role == .destructive ? appTheme.appearance.destructiveInk.opacity(configuration.isPressed ? appTheme.appearance.opacity0_16 : appTheme.appearance.opacity0_07) : prominent ? appTheme.palette.accentSurface.opacity(configuration.isPressed ? appTheme.appearance.opacity0_76 : 1) : appTheme.palette.accent.opacity(configuration.isPressed ? appTheme.appearance.opacity0_13 : appTheme.appearance.opacity0_055), in: RoundedRectangle(cornerRadius: DesignSystem.PreservedGeometry.radius9))
             .overlay(RoundedRectangle(cornerRadius: DesignSystem.PreservedGeometry.radius9).stroke(appTheme.palette.accent.opacity(prominent ? appTheme.appearance.opacity0_13 : 0)).allowsHitTesting(false))
             .scaleEffect(configuration.isPressed && motion == "Full" && !reduceMotion ? DesignSystem.Interaction.pressedScale : 1)
             .opacity(enabled ? 1 : appTheme.appearance.disabledOpacity)
             .animation(interfaceAnimation(motion, reduceMotion: reduceMotion), value: configuration.isPressed)
-            .modifier(KeyboardFocusBorder())
-            .interactiveHover()
+            .modifier(KeyboardFocusBorder(radius: DesignSystem.PreservedGeometry.radius9))
+            .interactiveHover(cornerRadius: DesignSystem.PreservedGeometry.radius9)
     }
 }
 struct PastelSegmentedControl<Value: Hashable>: View {
@@ -478,7 +512,7 @@ struct PastelSegmentedControl<Value: Hashable>: View {
                                 Capsule().fill(appTheme.palette.accentSurface).matchedGeometryEffect(id: "selection", in: selectionAnimation)
                             }
                         }.contentShape(Capsule())
-                }.buttonStyle(.plain).modifier(KeyboardFocusBorder(radius: DesignSystem.Radius.control)).interactiveHover(cornerRadius: DesignSystem.Radius.control)
+                }.buttonStyle(.plain).modifier(KeyboardFocusBorder(radius: DesignSystem.Radius.panel)).interactiveHover(cornerRadius: DesignSystem.Radius.panel)
                     .accessibilityLabel(title + ", " + label(value))
                     .accessibilityAddTraits(selection == value ? .isSelected : [])
             }
@@ -494,6 +528,7 @@ struct PastelSegmentedControl<Value: Hashable>: View {
 struct Card<Content: View>: View {
     @Environment(\.studyTheme) private var appTheme
     var stretches = false
+    var identity: AnyHashable? = nil
     @ViewBuilder var content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) { content }
@@ -501,7 +536,7 @@ struct Card<Content: View>: View {
             .padding(DesignSystem.Spacing.xl)
             .background(appTheme.palette.surface, in: RoundedRectangle(cornerRadius: DesignSystem.Radius.card))
             .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.card).stroke(appTheme.palette.border.opacity(appTheme.appearance.opacity0_35)).allowsHitTesting(false))
-            .interactiveHover(cornerRadius: DesignSystem.Radius.card, decorative: true)
+            .interactiveHover(cornerRadius: DesignSystem.Radius.card, decorative: true, identity: identity)
     }
 }
 struct Metric: View {
@@ -533,7 +568,8 @@ struct Landscape: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pointer = CGSize.zero
     @Environment(\.komorebiSectionVisible) private var sectionVisible
-    private var moving: Bool { sectionVisible && !reduceMotion && animations != "Off" }
+    @Environment(\.komorebiRendering) private var rendering
+    private var moving: Bool { sectionVisible && rendering.ambientMotion && !reduceMotion && animations != "Off" }
     var body: some View {
         if appTheme.decoration.atmosphere == .moonlit {
             if appTheme.decorationsEnabled { MoonlitLandscape(animations: animations) }
@@ -563,6 +599,7 @@ struct Landscape: View {
                     }
                 }
                 .onContinuousHover { phase in
+                    guard moving else { pointer = .zero; return }
                     switch phase {
                     case .active(let point): pointer = CGSize(width: (point.x / max(1, size.width) - 0.5) * appTheme.decoration.parallax, height: (point.y / max(1, size.height) - 0.5) * appTheme.decoration.parallax)
                     case .ended: pointer = .zero
@@ -602,8 +639,9 @@ struct TimerProgressRing: View {
     var running = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.komorebiSectionVisible) private var visible
+    @Environment(\.komorebiRendering) private var rendering
     @State private var origin = Date()
-    private var candleActive: Bool { running && appTheme.decoration.candle && ThemeAnimationPolicy.moving(visible: visible && scenePhase != .background, decorations: appTheme.decorationsEnabled, reduceMotion: reduceMotion, animations: motion) }
+    private var candleActive: Bool { running && appTheme.decoration.candle && ThemeAnimationPolicy.moving(visible: visible && rendering.ambientMotion && scenePhase != .background, decorations: appTheme.decorationsEnabled, reduceMotion: reduceMotion, animations: motion) }
     @Environment(\.komorebiMotion) private var motion
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var fraction: Double {
@@ -635,7 +673,7 @@ struct TimerProgressRing: View {
                 .rotationEffect(.degrees(appTheme.decoration.ringRotation))
                 .opacity(fraction > 0 ? 1 : 0)
         }
-        .animation(motion == "Off" || reduceMotion ? nil : .easeOut(duration: DesignSystem.TimerLayout.progressDuration), value: fraction)
+        .animation(motion == "Off" || reduceMotion || !visible || !rendering.visible ? nil : .easeOut(duration: DesignSystem.TimerLayout.progressDuration), value: fraction)
         .accessibilityHidden(true)
     }
 }
@@ -657,6 +695,7 @@ struct SessionStatusPill: View {
 }
 
 struct StudyVolumeSlider: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @Binding var value: Double
     @Environment(\.isEnabled) private var enabled
@@ -683,12 +722,12 @@ struct StudyVolumeSlider: View {
                 }.onEnded { _ in dragging = false })
         }.frame(height: DesignSystem.Interaction.controlHeight)
             .focusable(enabled).focused($focused)
-            .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.control).stroke(appTheme.palette.accent, lineWidth: focused ? DesignSystem.Interaction.focusWidth : 0).allowsHitTesting(false))
+            .modifier(KeyboardFocusBorder(explicitFocus: focused))
             .interactiveHover().opacity(enabled ? 1 : appTheme.appearance.disabledOpacity)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Volume ambiente").accessibilityValue("\(Int(fraction * 100)) per cento")
+            .accessibilityLabel(L10n.tr("Volume ambiente")).accessibilityValue(L10n.tr("%@ per cento" , String(describing: Int(fraction * 100))))
             .accessibilityRepresentation {
-                Slider(value: $value, in: 0...1).accessibilityLabel("Volume ambiente").disabled(!enabled)
+                Slider(value: $value, in: 0...1).accessibilityLabel(L10n.tr("Volume ambiente")).disabled(!enabled)
             }
             .onMoveCommand { direction in
                 if direction == .right || direction == .up { adjust(0.05) }
@@ -699,13 +738,14 @@ struct StudyVolumeSlider: View {
     private func adjust(_ delta: Double) { if enabled { value = min(1, max(0, value + delta)) } }
 }
 struct DurationChip: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     let minutes: Int
     @Binding var value: Double
     private var selected: Bool { value == Double(minutes) }
     var body: some View {
         Button { value = Double(minutes) } label: {
-            Text("\(minutes) min").font(appTheme.typography.caption)
+            Text(L10n.tr("%@ min" , String(describing: minutes))).font(appTheme.typography.caption)
                 .padding(.horizontal, DesignSystem.Spacing.sm).padding(.vertical, DesignSystem.Spacing.xs)
                 .foregroundStyle(selected ? appTheme.palette.onAction : appTheme.palette.textSecondary)
                 .background(selected ? appTheme.palette.action : appTheme.palette.surface, in: Capsule())
@@ -713,7 +753,7 @@ struct DurationChip: View {
                 .contentShape(Capsule())
         }.buttonStyle(.plain).interactiveHover(cornerRadius: DesignSystem.Radius.panel)
             .modifier(KeyboardFocusBorder(radius: DesignSystem.Radius.panel))
-            .accessibilityLabel("\(minutes) minuti").accessibilityAddTraits(selected ? .isSelected : [])
+            .accessibilityLabel(L10n.tr("%@ minuti" , String(describing: minutes))).accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 struct StudyEmptyState: View {
@@ -744,7 +784,8 @@ struct TimerRingMotion: ViewModifier {
     @Environment(\.komorebiMotion) private var motion
     @State private var origin = Date()
     @Environment(\.komorebiSectionVisible) private var sectionVisible
-    private var enabled: Bool { sectionVisible && !reduceMotion && motion != "Off" }
+    @Environment(\.komorebiRendering) private var rendering
+    private var enabled: Bool { sectionVisible && rendering.ambientMotion && !reduceMotion && motion != "Off" }
     func body(content: Content) -> some View {
         let animate = enabled
         TimelineView(.animation(minimumInterval: appTheme.decoration.ringFrameInterval, paused: !running || !animate)) { context in
@@ -772,6 +813,7 @@ struct SidebarChromeSurface: View {
 }
 
 struct StudyProgressBar: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     let value: Double
     let total: Double
@@ -785,8 +827,8 @@ struct StudyProgressBar: View {
                     Capsule().fill(color).frame(width: geometry.size.width * fraction).allowsHitTesting(false)
                 }
         }.frame(height: DesignSystem.Spacing.legacy6)
-            .accessibilityElement(children: .ignore).accessibilityLabel("Progresso")
-            .accessibilityValue("\(Int(fraction * 100)) per cento")
+            .accessibilityElement(children: .ignore).accessibilityLabel(L10n.tr("Progresso"))
+            .accessibilityValue(L10n.tr("%@ per cento" , String(describing: Int(fraction * 100))))
             .allowsHitTesting(false)
     }
 }
@@ -816,9 +858,10 @@ private struct MoonlitLandscape: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.komorebiSectionVisible) private var visible
+    @Environment(\.komorebiRendering) private var rendering
     let animations: String
     @State private var origin = Date()
-    private var moving: Bool { ThemeAnimationPolicy.moving(visible: visible && scenePhase != .background, decorations: appTheme.decorationsEnabled, reduceMotion: reduceMotion, animations: animations) }
+    private var moving: Bool { ThemeAnimationPolicy.moving(visible: visible && rendering.ambientMotion && scenePhase != .background, decorations: appTheme.decorationsEnabled, reduceMotion: reduceMotion, animations: animations) }
     var body: some View {
         TimelineView(.animation(minimumInterval: appTheme.decoration.frameInterval, paused: !moving)) { timeline in
             GeometryReader { geometry in
@@ -894,6 +937,7 @@ extension DesignSystem {
 }
 /// A ghost control with its own hover treatment; intentionally excludes InteractiveHover/spotlight.
 struct SidebarGhostToggle: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.komorebiMotion) private var motion
@@ -901,7 +945,7 @@ struct SidebarGhostToggle: View {
     let isOpen: Bool
     let action: () -> Void
     private var animated: Bool { !reduceMotion && motion != "Off" }
-    private var title: String { isOpen ? "Nascondi barra laterale" : "Mostra barra laterale" }
+    private var title: String { isOpen ? L10n.tr("Nascondi barra laterale") : L10n.tr("Mostra barra laterale") }
     var body: some View {
         Button(action: action) {
             ZStack {
@@ -939,22 +983,22 @@ private struct SidebarGhostStyle: ButtonStyle {
         let configuration: ButtonStyle.Configuration
         let animated: Bool
         @State private var hovered = false
-        @State private var cursorPushed = false
+        @Environment(\.studyInteraction) private var session
+        @Environment(\.komorebiRendering) private var rendering
         var body: some View {
             configuration.label
                 .foregroundStyle(hovered && enabled ? theme.palette.textPrimary : theme.palette.textSecondary)
                 .background(theme.palette.accent.opacity(enabled ? (configuration.isPressed ? DesignSystem.SidebarToggle.pressedOpacity : hovered ? DesignSystem.SidebarToggle.hoverOpacity : 0) : 0), in: RoundedRectangle(cornerRadius: DesignSystem.Radius.control))
                 .scaleEffect(configuration.isPressed && animated ? DesignSystem.SidebarToggle.pressedScale : 1)
                 .contentShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.control))
-                .onHover { inside in
-                    hovered = inside
-                    if inside && enabled && !cursorPushed { NSCursor.pointingHand.push(); cursorPushed = true }
-                    if !inside { resetCursor() }
-                }.onDisappear { resetCursor() }
+                .background {
+                    StudyPointerTarget(session: session, eligible: enabled && rendering.visible, decorative: false, textEntry: false, radius: DesignSystem.Radius.control, shape: .rounded) { hovered = $0; _ = $1 }
+                        .opacity(DesignSystem.Interaction.nativeProbeOpacity).allowsHitTesting(false).accessibilityHidden(true)
+                }
+                .onDisappear { hovered = false }
                 .animation(animated ? .easeOut(duration: DesignSystem.SidebarToggle.hoverDuration) : nil, value: hovered)
                 .animation(animated ? .easeOut(duration: DesignSystem.SidebarToggle.hoverDuration) : nil, value: configuration.isPressed)
         }
-        private func resetCursor() { if cursorPushed { NSCursor.pop(); cursorPushed = false } }
     }
 }
 
@@ -965,5 +1009,428 @@ struct EqualHeightCardRow<Content: View>: View {
     var body: some View {
         HStack(alignment: .top, spacing: spacing) { content }
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Window-level events, never a polling timer. Does not affect the study clock.
+struct RenderingState: Equatable {
+    var visible = true
+    var lowPower = false
+    var ambientMotion: Bool { visible && !lowPower }
+    static func resolve(windowVisible: Bool, miniaturized: Bool, occluded: Bool, appActive: Bool, lowPower: Bool) -> Self {
+        Self(visible: windowVisible && !miniaturized && !occluded && appActive, lowPower: lowPower)
+    }
+}
+private struct RenderingStateKey: EnvironmentKey { static let defaultValue = RenderingState() }
+extension EnvironmentValues {
+    var komorebiRendering: RenderingState {
+        get { self[RenderingStateKey.self] }
+        set { self[RenderingStateKey.self] = newValue }
+    }
+}
+private struct RenderingLifecycle: ViewModifier {
+    @ObservedObject private var appLocalization = AppLocalization.shared
+    @Environment(\.studyTheme) private var theme
+    @State private var state = RenderingState()
+    var allowInactive = false
+    func body(content: Content) -> some View {
+        content.environment(\.komorebiRendering, state)
+            .background { WindowRenderingProbe(allowInactive: allowInactive) { if state != $0 { state = $0 } }.opacity(DesignSystem.Interaction.nativeProbeOpacity).allowsHitTesting(false).accessibilityHidden(true) }
+            .overlay(alignment: .bottomTrailing) {
+                if state.lowPower {
+                    Label(L10n.tr("Risparmio energetico · decorazioni in pausa"), systemImage: "leaf")
+                        .font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+                        .padding(DesignSystem.Spacing.sm)
+                        .background(theme.palette.surface, in: RoundedRectangle(cornerRadius: DesignSystem.Radius.control))
+                        .padding(DesignSystem.Spacing.sm)
+                        .allowsHitTesting(false)
+                }
+            }
+    }
+}
+extension View {
+    func renderingLifecycle(allowInactive: Bool = false) -> some View { modifier(RenderingLifecycle(allowInactive: allowInactive)) }
+}
+private struct WindowRenderingProbe: NSViewRepresentable {
+    let allowInactive: Bool
+    let changed: (RenderingState) -> Void
+    func makeNSView(context: Context) -> Host { Host(allowInactive: allowInactive, changed: changed) }
+    func updateNSView(_ view: Host, context: Context) { view.changed = changed; view.allowInactive = allowInactive }
+    static func dismantleNSView(_ view: Host, coordinator: ()) { view.stop() }
+    final class Host: NSView {
+        var changed: (RenderingState) -> Void
+        var allowInactive: Bool
+        private var observers: [NSObjectProtocol] = []
+        private var pending = false
+        private var stopped = false
+        init(allowInactive: Bool, changed: @escaping (RenderingState) -> Void) {
+            self.allowInactive = allowInactive; self.changed = changed; super.init(frame: .zero)
+        }
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow(); stop(); stopped = false
+            guard let window else { return }
+            let center = NotificationCenter.default
+            for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification] {
+                observers.append(center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in self?.schedule() })
+            }
+            for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification, Notification.Name.NSProcessInfoPowerStateDidChange] {
+                observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in self?.schedule() })
+            }
+            schedule()
+        }
+        private func schedule() {
+            guard !pending, !stopped else { return }; pending = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }; self.pending = false
+                guard !self.stopped, let window = self.window else { return }
+                self.changed(RenderingState.resolve(windowVisible: window.isVisible, miniaturized: window.isMiniaturized,
+                    occluded: !window.occlusionState.contains(.visible), appActive: NSApp.isActive || self.allowInactive,
+                    lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled))
+            }
+        }
+        func stop() {
+            stopped = true
+            for observer in observers { NotificationCenter.default.removeObserver(observer) }
+            observers.removeAll()
+        }
+        deinit { for observer in observers { NotificationCenter.default.removeObserver(observer) } }
+    }
+}
+
+// One interaction session per window host. Events are observed, never consumed.
+enum StudyInputKind { case none, pointer, keyboard }
+enum StudyFocusPolicy {
+    static func showsRing(focused: Bool, input: StudyInputKind, enabled: Bool, visible: Bool) -> Bool {
+        focused && input == .keyboard && enabled && visible
+    }
+    static func isNavigationKey(_ code: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
+        modifiers.intersection([.command, .control, .option]).isEmpty && [48, 123, 124, 125, 126].contains(code)
+    }
+}
+private struct StudyInteractionKey: EnvironmentKey { static let defaultValue: StudyInteractionSession? = nil }
+extension EnvironmentValues {
+    var studyInteraction: StudyInteractionSession? {
+        get { self[StudyInteractionKey.self] }
+        set { self[StudyInteractionKey.self] = newValue }
+    }
+}
+@MainActor final class StudyInteractionSession: NSObject, ObservableObject {
+    @Published private(set) var input: StudyInputKind = .none
+    private var monitor: Any?
+    private var tracking: [ObjectIdentifier: WindowTracking] = [:]
+    @MainActor private struct WindowTracking {
+        weak var window: NSWindow?
+        weak var content: NSView?
+        let area: NSTrackingArea
+        let previousMouseMoves: Bool
+    }
+    private weak var host: NSView?
+    private var targets: [ObjectIdentifier: WeakTarget] = [:]
+    private weak var active: StudyPointerTarget.Host?
+    private var suppressed = false
+    private var lastTimestamp: TimeInterval = -1
+    private struct WeakTarget { weak var view: StudyPointerTarget.Host? }
+    func start(host: NSView) {
+        stop(); self.host = host
+        if let window = host.window { track(window) }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .mouseMoved, .leftMouseDragged, .scrollWheel]) { [weak self] event in
+            self?.receive(event); return event
+        }
+    }
+    func receive(_ event: NSEvent) {
+        guard let window = event.window, window == host?.window || targets.values.contains(where: { $0.view?.window == window }) else { return }
+        switch event.type {
+        case .keyDown:
+            if StudyFocusPolicy.isNavigationKey(event.keyCode, modifiers: event.modifierFlags) { setInput(.keyboard); resetHover() }
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            setInput(.pointer)
+        case .scrollWheel:
+            suppressed = true; clearHover()
+        case .mouseMoved, .leftMouseDragged:
+            guard event.timestamp != lastTimestamp else { return }; lastTimestamp = event.timestamp
+            suppressed = false; updatePointer(in: window)
+        default: break
+        }
+    }
+    func setInput(_ value: StudyInputKind) { if value != input { input = value } }
+    func reset() { setInput(.none); suppressed = true; clearHover() }
+    func resetScope(clearNativeFocus: Bool = true) {
+        reset()
+        if clearNativeFocus { host?.window?.makeFirstResponder(nil) }
+    }
+    fileprivate func register(_ target: StudyPointerTarget.Host) {
+        targets[ObjectIdentifier(target)] = WeakTarget(view: target)
+        if let window = target.window { track(window) }
+    }
+    private func track(_ window: NSWindow) {
+        tracking = tracking.filter { $0.value.window != nil }
+        let key = ObjectIdentifier(window)
+        guard tracking[key] == nil, let content = window.contentView else { return }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect], owner: self)
+        content.addTrackingArea(area)
+        tracking[key] = WindowTracking(window: window, content: content, area: area, previousMouseMoves: window.acceptsMouseMovedEvents)
+        window.acceptsMouseMovedEvents = true
+    }
+    @objc(mouseMoved:) private func trackingMouseMoved(_ event: NSEvent) { receive(event) }
+    @objc(mouseEntered:) private func trackingMouseEntered(_ event: NSEvent) { if let window = event.window { updatePointer(in: window) } }
+    @objc(mouseExited:) private func trackingMouseExited(_ event: NSEvent) { if let window = event.window { updatePointer(in: window) } }
+    fileprivate func unregister(_ target: StudyPointerTarget.Host) {
+        targets.removeValue(forKey: ObjectIdentifier(target))
+        if active === target { clearHover() }
+    }
+    fileprivate func geometryChanged(_ target: StudyPointerTarget.Host) {
+        guard active === target, let window = target.window else { return }
+        let point = target.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        if !target.eligible || !target.bounds.contains(point) || !target.visibleRect.contains(point) { resetHover() }
+    }
+    func resetHover() { suppressed = true; clearHover() }
+    func updatePointer(in window: NSWindow) {
+        guard !suppressed, window.isVisible, !window.isMiniaturized else { clearHover(); return }
+        let point = window.mouseLocationOutsideOfEventStream
+        let views = targets.values.compactMap(\.view).filter { $0.window == window }
+        let candidates = views.map { view in
+            StudyHoverCandidate(id: ObjectIdentifier(view), frame: view.convert(view.bounds, to: nil), visibleFrame: view.convert(view.visibleRect, to: nil), radius: view.radius, shape: view.shape, depth: view.depth, enabled: view.eligible && !view.isHiddenOrHasHiddenAncestor)
+        }
+        let winningID = StudyHoverPolicy.winner(at: point, candidates: candidates)
+        let winner = views.first { ObjectIdentifier($0) == winningID }
+        if active !== winner {
+            active?.changed(false, .zero); active = winner
+            if winner == nil { NSCursor.arrow.set() }
+        }
+        if let winner {
+            winner.changed(true, winner.convert(point, from: nil))
+            (winner.decorative ? NSCursor.arrow : winner.textEntry ? NSCursor.iBeam : .pointingHand).set()
+        }
+    }
+    func clearHover() {
+        let hadTarget = active != nil
+        active?.changed(false, .zero); active = nil
+        if hadTarget { NSCursor.arrow.set() }
+    }
+    func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil
+        reset(); host = nil
+        for item in tracking.values {
+            item.content?.removeTrackingArea(item.area)
+            item.window?.acceptsMouseMovedEvents = item.previousMouseMoves
+        }
+        tracking.removeAll()
+    }
+    deinit {
+        // Fallback cleanup must remain on AppKit's main queue even if the last
+        // reference is released elsewhere; do not capture the dying session.
+        let items = tracking, token = monitor
+        DispatchQueue.main.async {
+            if let token { NSEvent.removeMonitor(token) }
+            for item in items.values {
+                item.content?.removeTrackingArea(item.area)
+                item.window?.acceptsMouseMovedEvents = item.previousMouseMoves
+            }
+        }
+    }
+}
+private struct StudyInteractionHost: ViewModifier {
+    let scope: String
+    var clearNativeFocus = true
+    @StateObject private var session = StudyInteractionSession()
+    func body(content: Content) -> some View {
+        content.environment(\.studyInteraction, session).focusEffectDisabled()
+            .background { StudyInteractionWindow(session: session, clearNativeFocus: clearNativeFocus).opacity(DesignSystem.Interaction.nativeProbeOpacity).allowsHitTesting(false).accessibilityHidden(true) }
+            // Preserve the sidebar's real responder so repeated arrow navigation still works.
+            .onChange(of: scope) { session.reset() }
+    }
+}
+extension View {
+    func interactionHost(scope: String, clearNativeFocus: Bool = true) -> some View { modifier(StudyInteractionHost(scope: scope, clearNativeFocus: clearNativeFocus)) }
+}
+private struct StudyInteractionWindow: NSViewRepresentable {
+    let session: StudyInteractionSession
+    let clearNativeFocus: Bool
+    func makeNSView(context: Context) -> Host { Host(session: session, clearNativeFocus: clearNativeFocus) }
+    func updateNSView(_ view: Host, context: Context) {}
+    static func dismantleNSView(_ view: Host, coordinator: ()) { view.stop() }
+    final class Host: NSView {
+        let session: StudyInteractionSession
+        let clearNativeFocus: Bool
+        private var observers: [NSObjectProtocol] = []
+        init(session: StudyInteractionSession, clearNativeFocus: Bool) { self.session = session; self.clearNativeFocus = clearNativeFocus; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow(); stop()
+            guard let window else { return }; session.start(host: self); session.resetScope(clearNativeFocus: clearNativeFocus)
+            for name in [NSWindow.didResignKeyNotification, NSWindow.didMiniaturizeNotification, NSWindow.didChangeOcclusionStateNotification] {
+                observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak session] _ in MainActor.assumeIsolated { session?.reset() } })
+            }
+        }
+        func stop() { for observer in observers { NotificationCenter.default.removeObserver(observer) }; observers.removeAll(); session.stop() }
+        deinit { for observer in observers { NotificationCenter.default.removeObserver(observer) } }
+    }
+}
+private struct StudyPointerTarget: NSViewRepresentable {
+    let session: StudyInteractionSession?
+    let eligible: Bool
+    let decorative: Bool
+    let textEntry: Bool
+    let radius: CGFloat
+    let shape: StudyControlShape
+    let changed: (Bool, CGPoint) -> Void
+    func makeNSView(context: Context) -> Host { Host() }
+    func updateNSView(_ view: Host, context: Context) {
+        if view.session !== session { view.session?.unregister(view); view.session = session; session?.register(view) }
+        view.changed = changed; view.decorative = decorative; view.textEntry = textEntry; view.radius = radius; view.shape = shape
+        if view.eligible != eligible { view.eligible = eligible; session?.geometryChanged(view) }
+    }
+    static func dismantleNSView(_ view: Host, coordinator: ()) { view.stop() }
+    final class Host: NSView {
+        weak var session: StudyInteractionSession?
+        var eligible = false, decorative = false, textEntry = false
+        var radius: CGFloat = DesignSystem.Radius.control
+        var shape: StudyControlShape = .rounded
+        var changed: (Bool, CGPoint) -> Void = { _, _ in }
+        private var oldFrame = CGRect.null
+        private var scrollObserver: NSObjectProtocol?
+        override var isFlipped: Bool { true }
+        var depth: Int { var count = 0; var node = superview; while let next = node { count += 1; node = next.superview }; return count }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver); self.scrollObserver = nil }
+            guard window != nil else { session?.unregister(self); return }
+            session?.register(self)
+            if let clip = enclosingScrollView?.contentView {
+                clip.postsBoundsChangedNotifications = true
+                scrollObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.session?.resetHover() }
+                }
+            }
+        }
+        override func layout() {
+            super.layout()
+            let frame = convert(bounds, to: nil)
+            if frame != oldFrame { oldFrame = frame; session?.geometryChanged(self) }
+        }
+        func stop() { session?.unregister(self); if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) }; scrollObserver = nil }
+        deinit { if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) } }
+    }
+}
+private struct KeyboardFocusOutline: View {
+    @Environment(\.studyTheme) private var theme
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.komorebiSectionVisible) private var visible
+    @ObservedObject var session: StudyInteractionSession
+    let focused: Bool
+    let radius: CGFloat
+    let shape: StudyControlShape
+    var body: some View {
+        StudySurfaceShape(kind: shape, radius: radius)
+            .inset(by: -DesignSystem.Interaction.focusInset)
+            .stroke(theme.palette.accent, lineWidth: StudyFocusPolicy.showsRing(focused: focused, input: session.input, enabled: enabled, visible: visible) ? DesignSystem.Interaction.focusWidth : 0)
+            .allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
+struct StudyHoverCandidate<ID: Hashable> {
+    let id: ID
+    let frame: CGRect
+    let visibleFrame: CGRect
+    let radius: CGFloat
+    var shape: StudyControlShape = .rounded
+    let depth: Int
+    let enabled: Bool
+}
+enum StudyHoverPolicy {
+    static func winner<ID>(at point: CGPoint, candidates: [StudyHoverCandidate<ID>]) -> ID? {
+        candidates.filter { candidate in
+            candidate.enabled && candidate.visibleFrame.contains(point) && candidate.frame.contains(point)
+                && StudySurfaceShape(kind: candidate.shape, radius: candidate.radius).path(in: candidate.frame).contains(point)
+        }.min { a, b in
+            let aa = a.frame.width * a.frame.height, bb = b.frame.width * b.frame.height
+            return aa == bb ? a.depth > b.depth : aa < bb
+        }?.id
+    }
+}
+
+enum StudyControlShape { case rounded, circle, capsule }
+struct StudySurfaceShape: InsettableShape {
+    let kind: StudyControlShape
+    var radius: CGFloat = DesignSystem.Radius.control
+    var insetAmount: CGFloat = 0
+    func path(in rect: CGRect) -> Path {
+        let bounds = rect.insetBy(dx: insetAmount, dy: insetAmount)
+        switch kind {
+        case .rounded: return RoundedRectangle(cornerRadius: max(0, radius - insetAmount)).path(in: bounds)
+        case .circle: return Circle().path(in: bounds)
+        case .capsule: return Capsule().path(in: bounds)
+        }
+    }
+    func inset(by amount: CGFloat) -> Self { var value = self; value.insetAmount += amount; return value }
+}
+/// Selection remains a state, but its border yields to a keyboard focus outline.
+struct StudySelectionBorder: View {
+    @Environment(\.studyInteraction) private var session
+    @Environment(\.isFocused) private var focused
+    let selected: Bool
+    let color: Color
+    var normalColor = Color.clear
+    var radius: CGFloat = DesignSystem.Radius.control
+    var shape: StudyControlShape = .rounded
+    var explicitFocus: Bool? = nil
+    var body: some View {
+        Group {
+            if let session {
+                SelectionStroke(session: session, selected: selected, color: color, normalColor: normalColor, radius: radius, shape: shape, focused: explicitFocus ?? focused)
+            } else {
+                StudySurfaceShape(kind: shape, radius: radius).stroke(selected ? color : normalColor, lineWidth: selected ? DesignSystem.Interaction.focusWidth : DesignSystem.PreservedGeometry.stroke1)
+            }
+        }.allowsHitTesting(false).accessibilityHidden(true)
+    }
+    private struct SelectionStroke: View {
+        @Environment(\.isEnabled) private var enabled
+        @Environment(\.komorebiSectionVisible) private var visible
+        @ObservedObject var session: StudyInteractionSession
+        let selected: Bool
+        let color: Color
+        let normalColor: Color
+        let radius: CGFloat
+        let shape: StudyControlShape
+        let focused: Bool
+        var body: some View {
+            StudySurfaceShape(kind: shape, radius: radius).stroke(StudyFocusPolicy.showsRing(focused: focused, input: session.input, enabled: enabled, visible: visible) ? .clear : selected ? color : normalColor,
+                lineWidth: selected ? DesignSystem.Interaction.focusWidth : DesignSystem.PreservedGeometry.stroke1)
+        }
+    }
+}
+
+enum StudyHoverAppearance {
+    static func spotlight(mode: ThemeMode, listRow: Bool, selected: Bool) -> Bool { mode == .dark && !listRow && !selected }
+    static func lifts(active: Bool, listRow: Bool, decorative: Bool, reduceMotion: Bool, motion: String) -> Bool {
+        active && !listRow && !decorative && !reduceMotion && motion != "Off"
+    }
+}
+/// Separately drawable decoration also used by deterministic state-render tests.
+struct StudyHoverDecoration: View {
+    @Environment(\.studyTheme) private var theme
+    let active: Bool
+    var location = CGPoint.zero
+    var radius: CGFloat = DesignSystem.Radius.control
+    var shape: StudyControlShape = .rounded
+    var listRow = false
+    var selected = false
+    var body: some View {
+        GeometryReader { geometry in
+            let outline = StudySurfaceShape(kind: shape, radius: radius)
+            if listRow || selected {
+                outline.fill(theme.palette.accent.opacity(active ? theme.appearance.opacity0_055 : 0))
+            } else if active {
+                outline.stroke(theme.palette.accent.opacity(theme.appearance.opacity0_30), lineWidth: DesignSystem.PreservedGeometry.stroke1)
+                if StudyHoverAppearance.spotlight(mode: theme.mode, listRow: listRow, selected: selected) {
+                    let light = RadialGradient(colors: [theme.palette.spotlight.opacity(DesignSystem.Interaction.spotlightOpacity), .clear], center: UnitPoint(x: location.x / max(1, geometry.size.width), y: location.y / max(1, geometry.size.height)), startRadius: 0, endRadius: DesignSystem.Interaction.spotlightRadius)
+                    outline.fill(light)
+                }
+            }
+        }
     }
 }

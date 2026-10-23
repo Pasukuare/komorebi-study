@@ -35,18 +35,19 @@ import SwiftUI
         ascii("RIFF"); u32(UInt32(36 + samples.count * 2)); ascii("WAVEfmt "); u32(16); u16(1); u16(1); u32(UInt32(rate)); u32(UInt32(rate * 2)); u16(2); u16(16); ascii("data"); u32(UInt32(samples.count * 2))
         for sample in samples { u16(UInt16(bitPattern: sample)) }
         do { player = try AVAudioPlayer(data: data); player?.numberOfLoops = -1; player?.volume = Float(volume); player?.play() }
-        catch { self.error = error.localizedDescription }
+        catch { self.error = L10n.errorMessage(error) }
     }
 }
 struct AmbientControls: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @ObservedObject var audio: AmbientAudio
     var body: some View {
         HStack {
             Image(systemName: "waveform").foregroundStyle(appTheme.palette.textSecondary)
-            StudyDropdown(title: "Ambiente", options: [("Off", "Silenzio"), ("Pioggia", "Pioggia"), ("Vento", "Vento"), ("Camino", "Camino")], selection: $audio.sound).frame(width: 170)
+            StudyDropdown(title: L10n.tr("Ambiente"), options: [("Off", L10n.tr("Silenzio")), ("Pioggia", L10n.tr("Pioggia")), ("Vento", L10n.tr("Vento")), ("Camino", L10n.tr("Camino"))], selection: $audio.sound).frame(width: 170)
             StudyVolumeSlider(value: $audio.volume).frame(width: 100)
 
-        }.help("Suoni sintetizzati originali, senza registrazioni esterne")
+        }.help(L10n.tr("Suoni sintetizzati originali, senza registrazioni esterne"))
     }
 }

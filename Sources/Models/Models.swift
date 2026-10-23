@@ -1,13 +1,14 @@
 import Foundation
+import Combine
 import SwiftData
 
 enum ProductText {
     static let name = "Komorebi Study"
     static let wordmark = "komorebi"
-    static let welcome = "Benvenuto in Komorebi"
-    static let open = "Apri Komorebi"
-    static let openAccessible = "Apri Komorebi Study"
-    static let quit = "Esci da Komorebi"
+    static var welcome: String { L10n.tr("Benvenuto in Komorebi") }
+    static var open: String { L10n.tr("Apri Komorebi") }
+    static var openAccessible: String { L10n.tr("Apri Komorebi Study") }
+    static var quit: String { L10n.tr("Esci da Komorebi") }
 }
 
 /// Only known legacy values are rewritten. Future/unknown IDs are preserved verbatim.
@@ -92,6 +93,8 @@ struct UserSettings: Codable, Equatable {
     var lastSubject: UUID?
     var preferredMode = TimerMode.pomodoro
     var onboarded = false
+    var language: String?
+    var appLanguage: AppLanguage { AppLanguage(rawValue: language ?? "it") ?? .italian }
     var sidebarIsVisible: Bool?
     var showsSidebar: Bool { sidebarIsVisible ?? true }
 
@@ -194,4 +197,76 @@ enum StudyReviewArchive {
         guard bundleIdentifier?.hasPrefix("com.komorebi.study.review") == true else { return nil }
         return applicationSupport.appendingPathComponent("Komorebi Study Review", isDirectory: true).appendingPathComponent("Study.store")
     }
+}
+
+
+/// App-owned language preference; storage IDs and user-authored content are never translated.
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case italian = "it", english = "en"
+    var id: String { rawValue }
+    var name: String { self == .italian ? "Italiano" : "English" }
+    var locale: Locale { Locale(identifier: self == .italian ? "it_IT" : "en_GB") }
+}
+/// Publishes only explicit language changes, never timer ticks or cursor positions.
+final class AppLocalization: ObservableObject {
+    static let shared = AppLocalization()
+    @Published fileprivate(set) var language: AppLanguage = .italian
+}
+enum L10n {
+    static var language: AppLanguage {
+        get { AppLocalization.shared.language }
+        set { if AppLocalization.shared.language != newValue { AppLocalization.shared.language = newValue } }
+    }
+    static var locale: Locale { language.locale }
+    private static let english: [String: String] = {
+        let main = Bundle.main.url(forResource: "Translations", withExtension: "json")
+        #if SWIFT_PACKAGE
+        let url = main ?? Bundle.module.url(forResource: "Translations", withExtension: "json")
+        #else
+        let url = main
+        #endif
+        guard let url, let data = try? Data(contentsOf: url),
+              let values = try? JSONDecoder().decode([String: String].self, from: data) else {
+            assertionFailure("Missing app translation catalog")
+            return [:]
+        }
+        return values
+    }()
+    static var englishKeys: Set<String> { Set(english.keys) }
+    static func translation(_ key: String, language: AppLanguage) -> String {
+        language == .english ? english[key] ?? key : key
+    }
+    static func tr(_ key: String, _ arguments: String...) -> String {
+        let value = translation(key, language: language)
+        guard !arguments.isEmpty else { return value }
+        return String(format: value, locale: locale, arguments: arguments)
+    }
+    static func count(_ count: Int, singular: String, plural: String) -> String {
+        tr(count == 1 ? singular : plural, String(count))
+    }
+    /// Only for app-owned transient messages, never subject names or notes.
+    static func message(_ value: String) -> String {
+        if language == .english { return english[value] ?? value }
+        return english.first(where: { $0.value == value })?.key ?? value
+    }
+    static func errorMessage(_ error: Error) -> String {
+        if let error = error as? ThemeFonts.FontError { return error.errorDescription ?? tr("Operazione non riuscita.") }
+        guard language == .english else { return error.localizedDescription }
+        let error = error as NSError
+        let cocoa: [Int: String] = [NSFileNoSuchFileError: "File non trovato.", NSFileReadNoSuchFileError: "File non trovato.", NSFileReadCorruptFileError: "Il file non è valido o è danneggiato.", NSFileReadNoPermissionError: "Autorizzazione negata per la lettura del file.", NSFileWriteNoPermissionError: "Autorizzazione negata per il salvataggio del file.", NSFileWriteOutOfSpaceError: "Spazio su disco insufficiente."]
+        let key = error.domain == NSCocoaErrorDomain ? cocoa[error.code] : nil
+        return tr(key ?? "Operazione non riuscita.") + " [\(error.domain): \(error.code)]"
+    }
+    static func date(_ date: Date, complete: Bool = false) -> String {
+        date.formatted(complete ? .dateTime.weekday(.wide).day().month(.wide).year().locale(locale) : .dateTime.day().month(.abbreviated).year().locale(locale))
+    }
+    static var displayCalendar: Calendar {
+        var calendar = Calendar.current
+        calendar.locale = locale
+        return calendar
+    }
+}
+extension TimerMode {
+    var displayName: String { L10n.tr(rawValue) }
+    static func displayName(for rawValue: String) -> String { TimerMode(rawValue: rawValue)?.displayName ?? rawValue }
 }

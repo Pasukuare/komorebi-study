@@ -8,6 +8,7 @@ enum Page: String, CaseIterable, Identifiable {
     }
 }
 struct RootView: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -40,7 +41,7 @@ struct RootView: View {
                                     Image(systemName: item.icon).font(appTheme.typography.body).fontWeight(appTheme.preservedTypography.regularWeight)
                                         .foregroundStyle(page == item ? appTheme.palette.sidebarSelectedIcon : appTheme.palette.textSecondary)
                                         .frame(width: DesignSystem.Spacing.xl)
-                                    Text(item.rawValue).font(appTheme.typography.small).fontWeight(page == item ? appTheme.preservedTypography.semiboldWeight : appTheme.preservedTypography.regularWeight)
+                                    Text(L10n.tr(item.rawValue)).font(appTheme.typography.small).fontWeight(page == item ? appTheme.preservedTypography.semiboldWeight : appTheme.preservedTypography.regularWeight)
                                     Spacer(minLength: 0)
                                 }.padding(.horizontal, DesignSystem.Spacing.sm).padding(.vertical, DesignSystem.Spacing.sm)
                                     .foregroundStyle(page == item ? appTheme.palette.sidebarSelectedText : appTheme.palette.textPrimary)
@@ -60,7 +61,7 @@ struct RootView: View {
                     if direction == .up, index > 0 { page = Page.allCases[index - 1] }
                     if direction == .down, index + 1 < Page.allCases.count { page = Page.allCases[index + 1] }
                 }
-                Text("Il tuo studio rimane sul tuo Mac.").font(appTheme.typography.caption)
+                Text(L10n.tr("Il tuo studio rimane sul tuo Mac.")).font(appTheme.typography.caption)
                     .foregroundStyle(appTheme.palette.textSecondary).padding(DesignSystem.Spacing.lg)
                 }.opacity(sidebarVisible ? (store.studying ? appTheme.appearance.opacity0_90 : 1) : 0)
                     .animation(animated ? .easeOut(duration: DesignSystem.SidebarToggle.fadeDuration) : nil, value: sidebarVisible)
@@ -75,7 +76,7 @@ struct RootView: View {
                 HStack(spacing: DesignSystem.Spacing.sm) {
                     Text(ProductText.name).font(appTheme.typography.small).fontWeight(appTheme.preservedTypography.mediumWeight)
                     Spacer(minLength: DesignSystem.Spacing.md)
-                    Text(Date(), format: .dateTime.weekday(.wide).day().month(.wide))
+                    Text(store.now, format: .dateTime.weekday(.wide).day().month(.wide))
                         .foregroundStyle(appTheme.palette.textSecondary).font(appTheme.typography.caption).lineLimit(1)
                 }
                 .contentShape(Rectangle()).gesture(WindowDragGesture())
@@ -114,10 +115,12 @@ struct RootView: View {
         .tint(appTheme.palette.accent).foregroundStyle(appTheme.palette.textPrimary)
         .environment(\.komorebiMotion, store.settings.animations)
         .buttonStyle(ResponsiveButtonStyle())
+        .renderingLifecycle()
+        .interactionHost(scope: page.rawValue + String(store.focus), clearNativeFocus: !store.focus)
         .onChange(of: store.openTimer) { if store.openTimer { page = .timer; store.openTimer = false } }
         .sheet(isPresented: Binding(get: { !store.settings.onboarded }, set: { if !$0 { store.settings.onboarded = true } })) { OnboardingView() }
         .sheet(item: Binding(get: { store.menuCompletion ? nil : store.completed }, set: { store.completed = $0 })) { session in CompletionView(session: session) }
-        .alert(ProductText.name, isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) { Button("OK") { store.error = nil } } message: { Text(store.error ?? "") }
+        .alert(ProductText.name, isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) { Button("OK") { store.error = nil } } message: { Text(L10n.message(store.error ?? "")) }
     }
     private var sidebarToggle: some View {
         SidebarGhostToggle(isOpen: sidebarVisible) { store.settings.sidebarIsVisible = !sidebarVisible }
@@ -134,6 +137,7 @@ struct RootView: View {
     }
 }
 struct HomeView: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     @Environment(\.colorScheme) private var scheme
@@ -143,14 +147,13 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy7) {
-                        Text(appTheme.copy.text(.timerSubtitle, fallback: "Il tuo tempo, una cosa alla volta.")).font(appTheme.typography.timerTitle)
-                        Text("Uno spazio per concentrarti, al tuo ritmo.").foregroundStyle(appTheme.palette.textSecondary)
+                        Text(appTheme.copy.text(.timerSubtitle, fallback: "Timer")).font(appTheme.typography.timerTitle)
                     }
                     Spacer(minLength: DesignSystem.Spacing.md)
                     Button {
                         store.focus = true
                         if NSApp.keyWindow?.styleMask.contains(.fullScreen) != true { NSApp.keyWindow?.toggleFullScreen(nil) }
-                    } label: { Label("Focus", systemImage: "arrow.up.left.and.arrow.down.right") }.help("Riduci le distrazioni")
+                    } label: { Label("Focus", systemImage: "arrow.up.left.and.arrow.down.right") }.help(L10n.tr("Riduci le distrazioni"))
                 }
                 VStack(spacing: DesignSystem.Spacing.xl) {
                     ViewThatFits(in: .horizontal) {
@@ -172,7 +175,7 @@ struct HomeView: View {
                         AmbientControls(audio: store.audio)
                         Spacer(minLength: DesignSystem.Spacing.sm)
                         if store.active != nil && store.active?.isBreak == false {
-                            Button("Correggi fine…") { store.finishDate = Date(); store.correctingEnd = true }.font(appTheme.typography.caption)
+                            Button(L10n.tr("Correggi fine…")) { store.finishDate = Date(); store.correctingEnd = true }.font(appTheme.typography.caption)
                         }
                     }
                 }
@@ -184,13 +187,13 @@ struct HomeView: View {
                 Card {
                     HStack {
                         VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy6) {
-                            Text("Ogni minuto conta").font(appTheme.typography.legacyHeadline)
-                            Text(store.active?.isBreak == false ? "Il tempo in corso è incluso nel progresso di oggi." : "Ritrova qui il progresso della tua giornata.").font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                            Text(L10n.tr("Studio di oggi")).font(appTheme.typography.legacyHeadline)
+                            Text(store.active?.isBreak == false ? L10n.tr("Il tempo in corso è incluso nel progresso di oggi.") : L10n.tr("Tempo registrato oggi.")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
                         }
                         Spacer()
-                        Text(durationText(store.liveToday)).font(appTheme.typography.timerTotal).monospacedDigit()
+                        LiveStudyTime { _ in Text(durationText(store.liveToday)).font(appTheme.typography.timerTotal).monospacedDigit() }
                     }
-                    GoalBar(title: "Obiettivo di oggi", value: store.liveToday, goal: store.settings.dailyGoal * 3600)
+                    LiveStudyTime { _ in GoalBar(title: L10n.tr("Obiettivo di oggi"), value: store.liveToday, goal: store.settings.dailyGoal * 3600) }
                 }
             }.padding(DesignSystem.Layout.contentPadding).frame(maxWidth: DesignSystem.Layout.contentMaximum)
                 .frame(maxWidth: .infinity)
@@ -201,24 +204,25 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
             SessionStatusPill()
             if store.active == nil {
-                Text(store.nextSubject == nil ? "Prepara la tua sessione" : "Riparti da dove eri").font(appTheme.typography.timerSetupTitle)
+                Text(store.nextSubject == nil ? L10n.tr("Configurazione della sessione") : L10n.tr("Configurazione della sessione")).font(appTheme.typography.timerSetupTitle)
                 TimerSetup(compact: compact).transition(.opacity)
             } else {
-                Text(store.active?.isBreak == true ? "Una pausa per ricaricarti." : store.active?.pausedAt != nil ? "Prenditi il tempo che serve." : "Sei nel tuo momento di studio.")
+                Text(store.active?.isBreak == true ? L10n.tr("Pausa in corso.") : store.active?.pausedAt != nil ? L10n.tr("Timer in pausa.") : L10n.tr("Timer in corso."))
                     .font(appTheme.typography.timerMessage).fixedSize(horizontal: false, vertical: true)
-                Label(store.active?.mode.rawValue ?? "", systemImage: "timer").font(appTheme.typography.legacyCallout).foregroundStyle(appTheme.palette.textSecondary)
+                Label(store.active?.mode.displayName ?? "", systemImage: "timer").font(appTheme.typography.legacyCallout).foregroundStyle(appTheme.palette.textSecondary)
             }
             SessionControls()
-            Text(store.active?.isBreak == true ? "La prossima sessione partirà quando lo decidi tu." : "Al termine, il tuo tempo viene salvato nell’archivio.")
+            Text(store.active?.isBreak == true ? L10n.tr("La prossima sessione partirà quando lo decidi tu.") : L10n.tr("Al termine, il tuo tempo viene salvato nell’archivio."))
                 .font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary).fixedSize(horizontal: false, vertical: true)
             if let message = store.statusMessage {
-                Label(message, systemImage: "info.circle").font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                Label(L10n.message(message), systemImage: "info.circle").font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
             .animation(interfaceAnimation(store.settings.animations, reduceMotion: reduceMotion), value: store.stateText)
     }
 }
 struct SessionControls: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     var fromMenu = false
@@ -230,7 +234,7 @@ struct SessionControls: View {
                     .frame(maxWidth: .infinity).padding(.vertical, DesignSystem.Spacing.legacy6)
             }.buttonStyle(StudyActionStyle()).disabled(store.active == nil && store.subjects.isEmpty)
             if let active = store.active {
-                Button(active.isBreak ? "Salta pausa" : "Termina e salva") {
+                Button(active.isBreak ? L10n.tr("Salta pausa") : L10n.tr("Termina e salva")) {
                     if active.isBreak { store.skipBreak() } else { store.finish(fromMenu: fromMenu) }
                 }.frame(maxWidth: .infinity)
             }
@@ -238,29 +242,30 @@ struct SessionControls: View {
     }
 }
 struct TimerSetup: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     var compact = false
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy14) {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy6) {
-                Text("Materia").font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
-                StudyDropdown(title: "Materia", options: store.subjects.map { (Optional($0.id), $0.name) }, selection: Binding(get: { store.preparedSubject?.id }, set: { store.chooseSubject($0) })).frame(maxWidth: .infinity)
-                if store.subjects.isEmpty { Text("Aggiungi una materia per iniziare.").font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary) }
+                Text(L10n.tr("Materia")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                StudyDropdown(title: L10n.tr("Materia"), options: store.subjects.map { (Optional($0.id), $0.name) }, selection: Binding(get: { store.preparedSubject?.id }, set: { store.chooseSubject($0) })).frame(maxWidth: .infinity)
+                if store.subjects.isEmpty { Text(L10n.tr("Aggiungi una materia per iniziare.")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary) }
             }
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy6) {
-                Text("Modalità").font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                Text(L10n.tr("Modalità")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
                 if compact {
                     modePicker
                 } else {
-                    PastelSegmentedControl("Modalità", values: TimerMode.allCases, selection: Binding(get: { store.preparedMode }, set: { store.chooseMode($0) })) { $0.rawValue }
+                    PastelSegmentedControl(L10n.tr("Modalità"), values: TimerMode.allCases, selection: Binding(get: { store.preparedMode }, set: { store.chooseMode($0) })) { $0.displayName }
                 }
             }
             if store.preparedMode == .pomodoro {
                 HStack {
-                    Text("Studio").foregroundStyle(appTheme.palette.textSecondary)
+                    Text(L10n.tr("Studio")).foregroundStyle(appTheme.palette.textSecondary)
                     Spacer()
-                    StudyNumberField(title: "Minuti di studio", value: $store.settings.pomodoroDuration).frame(width: DesignSystem.TimerLayout.studyField).multilineTextAlignment(.trailing)
+                    StudyNumberField(title: L10n.tr("Minuti di studio"), value: $store.settings.pomodoroDuration).frame(width: DesignSystem.TimerLayout.studyField).multilineTextAlignment(.trailing)
                     Text("min").foregroundStyle(appTheme.palette.textSecondary)
                 }.font(appTheme.typography.legacyCallout)
                 HStack(spacing: DesignSystem.Spacing.xs) {
@@ -269,33 +274,35 @@ struct TimerSetup: View {
                     }
                 }
                 if !compact {
-                    Text("Pausa breve: \(durationText(store.settings.shortBreakDuration * 60)) · lunga ogni \(store.settings.longBreakEvery) sessioni")
+                    Text(L10n.tr("Pausa breve: %@ · lunga ogni %@ sessioni" , String(describing: durationText(store.settings.shortBreakDuration * 60)), String(describing: store.settings.longBreakEvery)))
                         .font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
                 }
             } else if store.preparedMode == .custom {
                 VStack(spacing: DesignSystem.Spacing.xs) {
-                    HStack { Text("Studio"); Spacer(); StudyNumberField(title: "Minuti di studio", value: $store.settings.customMinutes, range: 1...1440).frame(width: DesignSystem.TimerLayout.studyField) }
-                    HStack { Text("Pausa"); Spacer(); StudyNumberField(title: "Minuti di pausa", value: $store.settings.customBreak, range: 0...360).frame(width: DesignSystem.TimerLayout.studyField) }
+                    HStack { Text(L10n.tr("Studio")); Spacer(); StudyNumberField(title: L10n.tr("Minuti di studio"), value: $store.settings.customMinutes, range: 1...1440).frame(width: DesignSystem.TimerLayout.studyField) }
+                    HStack { Text(L10n.tr("Pausa")); Spacer(); StudyNumberField(title: L10n.tr("Minuti di pausa"), value: $store.settings.customBreak, range: 0...360).frame(width: DesignSystem.TimerLayout.studyField) }
                 }.font(appTheme.typography.caption)
             } else {
-                Text("Senza conto alla rovescia. Termina quando vuoi.").font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                Text(L10n.tr("Senza conto alla rovescia. Termina quando vuoi.")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
             }
         }
     }
     var modePicker: some View {
-        StudyDropdown(title: "Modalità", options: TimerMode.allCases.map { ($0, $0.rawValue) }, selection: Binding(get: { store.preparedMode }, set: { store.chooseMode($0) })).frame(maxWidth: .infinity)
+        StudyDropdown(title: L10n.tr("Modalità"), options: TimerMode.allCases.map { ($0, $0.displayName) }, selection: Binding(get: { store.preparedMode }, set: { store.chooseMode($0) })).frame(maxWidth: .infinity)
     }
 }
 struct TimerFace: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     var minimal = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.komorebiSectionVisible) private var visible
+    @Environment(\.komorebiRendering) private var rendering
     @EnvironmentObject var store: StudyStore
     var target: Double? { store.active.map { $0.target } ?? store.preparedTarget }
-    var elapsed: Double { store.active?.elapsed(at: store.now) ?? 0 }
     var color: Color { store.active?.isBreak == true ? appTheme.palette.interval : appTheme.palette.accent }
-    var time: String { store.active.map { clockText($0.displayed(at: store.now)) } ?? clockText(store.preparedTarget ?? 0) }
-    @ViewBuilder private var timerTime: some View {
+    func time(at date: Date) -> String { store.active.map { clockText($0.displayed(at: date)) } ?? clockText(store.preparedTarget ?? 0) }
+    @ViewBuilder private func timerTime(_ time: String) -> some View {
         if appTheme.cifreCellaFissa {
             ThemeFixedTimerDigits(text: time, pointSize: appTheme.typography.timerPointSize)
         } else {
@@ -306,24 +313,26 @@ struct TimerFace: View {
 
     var body: some View {
         VStack(spacing: DesignSystem.Spacing.legacy18) {
-            Text(store.active?.subjectName ?? store.preparedSubject?.name ?? "Il tuo studio")
+            Text(store.active?.subjectName ?? store.preparedSubject?.name ?? L10n.tr("Studio"))
                 .font(appTheme.typography.timerSubject).lineLimit(2).multilineTextAlignment(.center)
+            LiveStudyTime { date in
+            let time = time(at: date)
             GeometryReader { geometry in
                 ZStack {
-                    TimerProgressRing(value: elapsed, total: target, running: store.studying)
+                    TimerProgressRing(value: store.active?.elapsed(at: date) ?? 0, total: target, running: store.studying)
                         .modifier(TimerRingMotion(running: store.studying, completion: store.completionPulse))
-                    timerTime
+                    timerTime(time)
                         .foregroundStyle(appTheme.palette.textPrimary)
                         .padding(.horizontal, DesignSystem.Spacing.xl)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                        .animation(interfaceAnimation(store.settings.animations, reduceMotion: reduceMotion), value: time)
-                        .accessibilityLabel("Tempo").accessibilityValue(time)
+                        .animation(interfaceAnimation(store.settings.animations, reduceMotion: reduceMotion || !visible || !rendering.visible), value: time)
+                        .accessibilityLabel(L10n.tr("Tempo")).accessibilityValue(time)
                     if !minimal { VStack {
                         Image(systemName: store.active?.isBreak == true ? "cup.and.saucer" : store.studying ? "book" : "book.closed")
                             .font(appTheme.typography.timerSymbol).foregroundStyle(color)
                             .opacity(DesignSystem.TimerLayout.symbolOpacity).accessibilityHidden(true)
                         Spacer()
-                        Text(target == nil ? "tempo trascorso" : store.active?.isBreak == true ? "tempo per te" : "tempo rimanente")
+                        Text(target == nil ? L10n.tr("tempo trascorso") : store.active?.isBreak == true ? L10n.tr("tempo di pausa") : L10n.tr("tempo rimanente"))
                             .font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textPrimary)
                             .lineLimit(1)
                     }
@@ -331,13 +340,15 @@ struct TimerFace: View {
                     }
                 }
             }.aspectRatio(1, contentMode: .fit)
+            }
             if !minimal && store.active?.mode == .pomodoro {
-                Text("Pomodoro \(store.cycles + (store.active?.isBreak == true ? 0 : 1))").font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                Text(L10n.tr("Pomodoro %@" , String(describing: store.cycles + (store.active?.isBreak == true ? 0 : 1)))).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
             }
         }
     }
 }
 struct FocusView: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -354,7 +365,7 @@ struct FocusView: View {
             VStack {
                 HStack {
                     Spacer()
-                    Button("Esci da Focus", systemImage: "arrow.down.right.and.arrow.up.left", action: exitFocus)
+                    Button(L10n.tr("Esci da Focus"), systemImage: "arrow.down.right.and.arrow.up.left", action: exitFocus)
                         .keyboardShortcut(.escape, modifiers: [])
                         .focused($controlFocused)
                 }
@@ -362,7 +373,7 @@ struct FocusView: View {
                 HStack(spacing: DesignSystem.Spacing.md) {
                     Button(store.actionTitle, systemImage: store.studying ? "pause.fill" : "play.fill") { store.toggle() }
                         .buttonStyle(StudyActionStyle()).focused($controlFocused)
-                    Button("Esci", action: exitFocus).focused($controlFocused)
+                    Button(L10n.tr("Esci"), action: exitFocus).focused($controlFocused)
                 }
             }.padding(DesignSystem.Spacing.xxl)
                 .opacity(visible ? 1 : 0)
@@ -390,6 +401,7 @@ struct FocusView: View {
     }
 }
 struct CompletionView: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     let session: StudySession
@@ -397,35 +409,37 @@ struct CompletionView: View {
     var body: some View {
         VStack(spacing: DesignSystem.Spacing.lg) {
             Image(systemName: "leaf.fill").font(appTheme.preservedTypography.completionSymbol).foregroundStyle(appTheme.palette.accent)
-            Text("Sessione salvata").font(appTheme.preservedTypography.completionTitle)
+            Text(L10n.tr("Sessione salvata")).font(appTheme.preservedTypography.completionTitle)
             Text("\(session.subjectName) · \(durationText(session.duration))").font(appTheme.preservedTypography.title3)
-            Text("Oggi \(durationText(store.liveToday)) · Settimana \(durationText(store.liveWeekly))").foregroundStyle(appTheme.palette.textSecondary)
-            StudyTextEntry("Una nota per la prossima volta…", text: $note, axis: .vertical).interactiveHover(textEntry: true).lineLimit(3...5).textFieldStyle(StudyTextFieldStyle())
-            Button("Continua") { session.note = note; if store.save() { store.completed = nil } }.buttonStyle(ResponsiveButtonStyle(prominent: true)).keyboardShortcut(.defaultAction)
+            Text(L10n.tr("Oggi %@ · Settimana %@" , String(describing: durationText(store.liveToday)), String(describing: durationText(store.liveWeekly)))).foregroundStyle(appTheme.palette.textSecondary)
+            StudyTextEntry(L10n.tr("Nota della sessione…"), text: $note, axis: .vertical).interactiveHover(textEntry: true).lineLimit(3...5).textFieldStyle(StudyTextFieldStyle())
+            Button(L10n.tr("Continua")) { session.note = note; if store.save() { store.completed = nil } }.buttonStyle(ResponsiveButtonStyle(prominent: true)).keyboardShortcut(.defaultAction)
         }.padding(DesignSystem.PreservedGeometry.gap36).frame(width: DesignSystem.PreservedGeometry.points440).onAppear { note = session.note }
     }
 }
 struct OnboardingView: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     var body: some View {
         VStack(spacing: DesignSystem.Spacing.xl) {
             Image(systemName: "leaf").font(appTheme.preservedTypography.welcomeSymbol).foregroundStyle(appTheme.palette.accent)
             Text(ProductText.welcome).font(appTheme.preservedTypography.pageTitle)
-            Text("Timer\nIl tuo tempo si salva automaticamente.\nCostruisci una routine sostenibile.").multilineTextAlignment(.center).lineSpacing(DesignSystem.Spacing.xs)
-            Text("Quanto vorresti studiare al giorno?").font(appTheme.preservedTypography.headline)
-            HStack { ForEach([2,3,4], id: \.self) { h in Button("\(h) ore") { store.settings.dailyGoal = Double(h) } } }
-            HStack { Text("Obiettivo in ore"); StudyNumberField(title: "Ore", value: $store.settings.dailyGoal).frame(width: DesignSystem.TimerLayout.studyField) }
-            Button("Entra nel tuo spazio") {
+            Text(L10n.tr("Il tempo delle sessioni viene salvato automaticamente.")).multilineTextAlignment(.center).lineSpacing(DesignSystem.Spacing.xs)
+            Text(L10n.tr("Obiettivo giornaliero")).font(appTheme.preservedTypography.headline)
+            HStack { ForEach([2,3,4], id: \.self) { h in Button(L10n.count(h, singular: "%@ ora", plural: "%@ ore")) { store.settings.dailyGoal = Double(h) } } }
+            HStack { Text(L10n.tr("Obiettivo in ore")); StudyNumberField(title: L10n.tr("Ore"), value: $store.settings.dailyGoal).frame(width: DesignSystem.TimerLayout.studyField) }
+            Button(L10n.tr("Apri app")) {
                 store.settings.dailyGoal = store.settings.dailyGoal.isFinite && store.settings.dailyGoal > 0 ? min(24, max(0.25, store.settings.dailyGoal)) : 3.0
                 store.settings.onboarded = true
             }.buttonStyle(ResponsiveButtonStyle(prominent: true)).controlSize(.large)
-            Text("Offline. Nessun account. Solo il tuo Mac.").font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary)
+            Text(L10n.tr("Offline. Nessun account. Solo il tuo Mac.")).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary)
         }.padding(DesignSystem.PreservedGeometry.gap40).frame(width: DesignSystem.PreservedGeometry.points480)
     }
 }
 
 struct OverviewView: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     var openTimer: () -> Void
@@ -437,8 +451,7 @@ struct OverviewView: View {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy7) {
-                        Text("Il tuo studio, oggi.").font(appTheme.preservedTypography.homeTitle)
-                        Text(appTheme.copy.text(.homeSubtitle, fallback: "Riparti da una materia. Il resto può aspettare.")).foregroundStyle(appTheme.palette.textSecondary)
+                        Text(L10n.tr("Riepilogo")).font(appTheme.preservedTypography.homeTitle)
                     }
                     Spacer()
                     if store.streak > 0 {
@@ -458,11 +471,11 @@ struct OverviewView: View {
                 }
                 Card {
                     HStack {
-                        Text("Il ritmo della settimana").font(appTheme.preservedTypography.homeCardTitle)
+                        Text(L10n.tr("Obiettivo settimanale")).font(appTheme.preservedTypography.homeCardTitle)
                         Spacer()
-                        GoalEditButton().labelStyle(.iconOnly).help("Modifica obiettivi")
+                        GoalEditButton().labelStyle(.iconOnly).help(L10n.tr("Modifica obiettivi"))
                     }
-                    GoalBar(title: "Questa settimana", value: store.liveWeekly, goal: store.settings.weeklyGoal * 3600)
+                    LiveStudyTime { _ in GoalBar(title: L10n.tr("Questa settimana"), value: store.liveWeekly, goal: store.settings.weeklyGoal * 3600) }
                 }
                 ViewThatFits(in: .horizontal) {
                     EqualHeightCardRow(spacing: DesignSystem.Spacing.lg) {
@@ -477,23 +490,25 @@ struct OverviewView: View {
     var quickStart: some View {
         Card(stretches: true) {
             SessionStatusPill()
-            Text(store.active == nil ? "Da dove ripartiamo?" : store.active?.subjectName ?? "La tua sessione")
+            Text(store.active == nil ? L10n.tr("Sessione") : store.active?.subjectName ?? L10n.tr("Sessione"))
                 .font(appTheme.preservedTypography.editorTitle).fixedSize(horizontal: false, vertical: true)
             if store.active == nil {
-                StudyDropdown(title: "Materia", options: store.subjects.map { (Optional($0.id), $0.name) }, selection: Binding(get: { store.preparedSubject?.id }, set: { store.chooseSubject($0) }))
+                StudyDropdown(title: L10n.tr("Materia"), options: store.subjects.map { (Optional($0.id), $0.name) }, selection: Binding(get: { store.preparedSubject?.id }, set: { store.chooseSubject($0) }))
                 Label(store.preparedSummary, systemImage: "timer").font(appTheme.preservedTypography.callout).foregroundStyle(appTheme.palette.textSecondary)
                 HStack {
                     Button {
                         store.start(); if store.active != nil { openTimer() }
-                    } label: { Label("Inizia a studiare", systemImage: "play.fill").padding(.vertical, DesignSystem.Spacing.xxs) }
+                    } label: { Label(L10n.tr("Inizia a studiare"), systemImage: "play.fill").padding(.vertical, DesignSystem.Spacing.xxs) }
                         .buttonStyle(StudyActionStyle()).disabled(store.subjects.isEmpty)
-                    Button("Configura", action: openTimer)
+                    Button(L10n.tr("Configura"), action: openTimer)
                 }
             } else {
-                Text(store.active.map { clockText($0.displayed(at: store.now)) } ?? "")
-                    .font(appTheme.preservedTypography.homeTimerValue).monospacedDigit()
+                LiveStudyTime { date in
+                    Text(store.active.map { clockText($0.displayed(at: date)) } ?? "")
+                        .font(appTheme.preservedTypography.homeTimerValue).monospacedDigit()
+                }
                 HStack {
-                    Button("Torna alla sessione", action: openTimer).buttonStyle(ResponsiveButtonStyle(prominent: true))
+                    Button(L10n.tr("Torna alla sessione"), action: openTimer).buttonStyle(ResponsiveButtonStyle(prominent: true))
                     Button(store.actionTitle) { store.toggle() }
                 }
             }
@@ -502,51 +517,55 @@ struct OverviewView: View {
     var upcomingCard: some View {
         Card(stretches: true) {
             HStack {
-                Text("Prossimi esami").font(appTheme.preservedTypography.homeCardTitle)
+                Text(L10n.tr("Prossimi esami")).font(appTheme.preservedTypography.homeCardTitle)
                 Spacer()
-                Button(action: openCalendar) { Image(systemName: "arrow.up.right") }.help("Apri calendario").accessibilityLabel("Apri calendario")
+                Button(action: openCalendar) { Image(systemName: "arrow.up.right") }.help(L10n.tr("Apri calendario")).accessibilityLabel(L10n.tr("Apri calendario"))
             }
             if upcoming.isEmpty {
-                Text("Nessuna scadenza in vista.").foregroundStyle(appTheme.palette.textSecondary)
-                Button("Aggiungi dal calendario", action: openCalendar)
+                Text(L10n.tr("Nessun esame programmato.")).foregroundStyle(appTheme.palette.textSecondary)
+                Button(L10n.tr("Aggiungi dal calendario"), action: openCalendar)
             }
             ForEach(Array(upcoming.prefix(2))) { exam in ExamRow(exam: exam) }
         }
     }
     var recentCard: some View {
         Card(stretches: true) {
-            Text("Ultime sessioni").font(appTheme.preservedTypography.homeCardTitle)
-            if store.sessions.isEmpty { Text("Le tue sessioni appariranno qui, una alla volta.").foregroundStyle(appTheme.palette.textSecondary) }
+            Text(L10n.tr("Ultime sessioni")).font(appTheme.preservedTypography.homeCardTitle)
+            if store.sessions.isEmpty { Text(L10n.tr("Le sessioni salvate appariranno qui.")).foregroundStyle(appTheme.palette.textSecondary) }
             ForEach(Array(store.sessions.prefix(2))) { session in SessionRow(session: session) }
         }
     }
 }
 struct DailyGoalCard: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     var stretches = false
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     var goal: Double { store.settings.dailyGoal * 3600 }
     var body: some View {
         Card(stretches: stretches) {
-            HStack { Text("Il tuo obiettivo di oggi").font(appTheme.preservedTypography.headline); Spacer() }
+            LiveStudyTime { _ in
+            HStack { Text(L10n.tr("Obiettivo giornaliero")).font(appTheme.preservedTypography.headline); Spacer() }
             VStack(spacing: 0) {
                 if stretches { Spacer(minLength: 0) }
                 ZStack {
                 ProgressRing(value: store.liveToday, total: goal)
                 VStack(spacing: DesignSystem.PreservedGeometry.gap5) {
                     Text(durationText(store.liveToday)).font(appTheme.preservedTypography.dailyGoalValue).monospacedDigit()
-                    Text("di \(durationText(goal))").font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                    Text(L10n.tr("di %@" , String(describing: durationText(goal)))).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary)
                 }
             }.frame(width: DesignSystem.PreservedGeometry.points132, height: DesignSystem.PreservedGeometry.points132).frame(maxWidth: .infinity).padding(.vertical, DesignSystem.PreservedGeometry.gap3)
                 if stretches { Spacer(minLength: 0) }
             }.frame(maxHeight: stretches ? .infinity : nil)
-            Text(store.liveToday >= goal ? "Obiettivo raggiunto. Ben fatto." : "Ancora \(durationText(goal - store.liveToday)), al tuo ritmo.")
+            Text(store.liveToday >= goal ? L10n.tr("Obiettivo raggiunto.") : L10n.tr("Tempo rimanente: %@" , String(describing: durationText(goal - store.liveToday))))
                 .font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary).frame(maxWidth: .infinity, alignment: .center)
+            }
         }
     }
 }
 
 private struct ThemeSuggestionCard: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     let campaign: ThemeCampaign
     let open: () -> Void
@@ -557,12 +576,12 @@ private struct ThemeSuggestionCard: View {
                 ThemeTimerPreview(preview: campaign.package.resolve(mode: appTheme.mode))
                     .frame(width: DesignSystem.ThemeLayout.previewWidth).allowsHitTesting(false).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    Text("Prova il tema " + campaign.package.name).font(appTheme.typography.heading)
-                    Text(campaign.package.subtitle).font(appTheme.typography.small).foregroundStyle(appTheme.palette.textSecondary)
-                    Button("Apri le impostazioni del tema", action: open)
+                    Text(L10n.tr("Prova il tema ") + campaign.package.name).font(appTheme.typography.heading)
+                    Text(L10n.tr(campaign.package.subtitle)).font(appTheme.typography.small).foregroundStyle(appTheme.palette.textSecondary)
+                    Button(L10n.tr("Apri le impostazioni del tema"), action: open)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 Button(action: dismiss) { Image(systemName: "xmark").frame(width: DesignSystem.Interaction.controlHeight, height: DesignSystem.Interaction.controlHeight).contentShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.control)) }
-                    .accessibilityLabel("Chiudi suggerimento del tema " + campaign.package.name)
+                    .accessibilityLabel(L10n.tr("Chiudi suggerimento del tema ") + campaign.package.name)
             }
         }
     }

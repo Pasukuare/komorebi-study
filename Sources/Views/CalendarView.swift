@@ -1,5 +1,6 @@
 import SwiftUI
 struct CalendarView: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     @State private var month = Date()
@@ -19,13 +20,13 @@ struct CalendarView: View {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy22) {
                 HStack {
                     Text(month, format: .dateTime.month(.wide).year()).font(appTheme.preservedTypography.pageTitle)
-                    Spacer(); Button("Aggiungi esame", systemImage: "plus") { adding = true }.buttonStyle(ResponsiveButtonStyle(prominent: true))
-                    Button { month = Calendar.current.date(byAdding: .month, value: -1, to: month) ?? month } label: { Image(systemName: "chevron.left") }.accessibilityLabel("Mese precedente")
-                    Button("Oggi") { month = Date(); selected = Date() }
-                    Button { month = Calendar.current.date(byAdding: .month, value: 1, to: month) ?? month } label: { Image(systemName: "chevron.right") }.accessibilityLabel("Mese successivo")
+                    Spacer(); Button(L10n.tr("Aggiungi esame"), systemImage: "plus") { adding = true }.buttonStyle(ResponsiveButtonStyle(prominent: true))
+                    Button { month = Calendar.current.date(byAdding: .month, value: -1, to: month) ?? month } label: { Image(systemName: "chevron.left") }.accessibilityLabel(L10n.tr("Mese precedente"))
+                    Button(L10n.tr("Oggi")) { month = Date(); selected = Date() }
+                    Button { month = Calendar.current.date(byAdding: .month, value: 1, to: month) ?? month } label: { Image(systemName: "chevron.right") }.accessibilityLabel(L10n.tr("Mese successivo"))
                 }
                 LazyVGrid(columns: columns, spacing: DesignSystem.Spacing.xs) {
-                    ForEach(0..<7, id: \.self) { n in Text(Calendar.current.shortStandaloneWeekdaySymbols[(Calendar.current.firstWeekday - 1 + n) % 7]).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary) }
+                    ForEach(0..<7, id: \.self) { n in Text(L10n.displayCalendar.shortStandaloneWeekdaySymbols[(Calendar.current.firstWeekday - 1 + n) % 7]).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary) }
                     ForEach(Array(days.enumerated()), id: \.offset) { _, date in
                         if let date {
                             let interval = Calendar.current.dateInterval(of: .day, for: date) ?? DateInterval(start: date, end: date)
@@ -41,14 +42,14 @@ struct CalendarView: View {
                     ForEach(dayExams) { exam in
                         HStack {
                             ExamRow(exam: exam)
-                            Button("Modifica") { editing = exam }
-                            Button("Elimina", role: .destructive) { deleting = exam }
+                            Button(L10n.tr("Modifica")) { editing = exam }
+                            Button(L10n.tr("Elimina"), role: .destructive) { deleting = exam }
                         }
                     }
                     if !dayExams.isEmpty { Divider() }
                     let interval = Calendar.current.dateInterval(of: .day, for: selected) ?? DateInterval(start: selected, end: selected)
                     let sessions = store.sessions.filter { store.contribution($0, in: interval) > 0 }
-                    if sessions.isEmpty { Text("Nessuna sessione in questo giorno.").foregroundStyle(appTheme.palette.textSecondary) }
+                    if sessions.isEmpty { Text(L10n.tr("Nessuna sessione in questo giorno.")).foregroundStyle(appTheme.palette.textSecondary) }
                     ForEach(sessions) { session in SessionRow(session: session) }
                 }
             }.padding(DesignSystem.Layout.contentPadding).frame(maxWidth: DesignSystem.Layout.contentMaximum).frame(maxWidth: .infinity)
@@ -62,10 +63,10 @@ struct CalendarView: View {
         }
         .sheet(isPresented: $adding) { ExamEditor(initialDate: selected) }
         .sheet(item: $editing) { exam in ExamEditor(exam: exam, initialDate: exam.date) }
-        .alert("Eliminare l’esame?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
-            Button("Annulla", role: .cancel) {}
-            Button("Elimina", role: .destructive) { if let deleting { store.context.delete(deleting); store.save() }; deleting = nil }
-        } message: { Text("Le sessioni di studio rimarranno nell’archivio.") }
+        .alert(L10n.tr("Eliminare l’esame?"), isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button(L10n.tr("Annulla"), role: .cancel) {}
+            Button(L10n.tr("Elimina"), role: .destructive) { if let deleting { store.context.delete(deleting); store.save() }; deleting = nil }
+        } message: { Text(L10n.tr("Le sessioni di studio rimarranno nell’archivio.")) }
     }
 }
 struct SessionRow: View {
@@ -75,7 +76,7 @@ struct SessionRow: View {
     var body: some View {
         HStack(spacing: DesignSystem.Spacing.legacy14) {
             SubjectIconTile(symbol: store.subjects.first { $0.id == session.subjectID }?.icon ?? "book.closed", color: appTheme.subjectColor(store.subjects.first { $0.id == session.subjectID }?.color ?? "Salvia"))
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) { Text(session.subjectName).font(appTheme.preservedTypography.headline); Text(session.note.isEmpty ? session.timerMode : session.note).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary).lineLimit(2) }
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) { Text(session.subjectName).font(appTheme.preservedTypography.headline); Text(session.note.isEmpty ? TimerMode.displayName(for: session.timerMode) : session.note).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary).lineLimit(2) }
             Spacer(); VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xxs) { Text(durationText(session.duration)).monospacedDigit(); Text(session.startDate, format: .dateTime.day().month().hour().minute()).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary) }
         }.padding(.vertical, DesignSystem.Spacing.xs)
     }
@@ -102,6 +103,7 @@ struct ExamRow: View {
     }
 }
 struct ExamEditor: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     @Environment(\.dismiss) var dismiss
@@ -115,23 +117,23 @@ struct ExamEditor: View {
     @State private var saveError: String?
     var body: some View {
         Form {
-            Text(exam == nil ? "Nuovo esame" : "Modifica esame").font(appTheme.preservedTypography.editorTitle)
-            StudyTextEntry("Nome esame", text: $title).textFieldStyle(StudyTextFieldStyle()).interactiveHover(textEntry: true)
-            StudyDropdown(title: "Materia", options: [(nil as UUID?, "Nessuna materia")] + store.subjects.map { (Optional($0.id), $0.name) }, selection: $subjectID)
-            DatePicker("Data", selection: $date, displayedComponents: .date).interactiveHover()
-            Toggle("Specifica un orario", isOn: $hasTime).interactiveHover()
-            if hasTime { DatePicker("Ora", selection: $date, displayedComponents: .hourAndMinute).interactiveHover() }
-            StudyTextEntry("Note / aula", text: $note, axis: .vertical).textFieldStyle(StudyTextFieldStyle()).interactiveHover(textEntry: true).lineLimit(3...5)
+            Text(exam == nil ? L10n.tr("Nuovo esame") : L10n.tr("Modifica esame")).font(appTheme.preservedTypography.editorTitle)
+            StudyTextEntry(L10n.tr("Nome esame"), text: $title).textFieldStyle(StudyTextFieldStyle()).interactiveHover(textEntry: true)
+            StudyDropdown(title: L10n.tr("Materia"), options: [(nil as UUID?, L10n.tr("Nessuna materia"))] + store.subjects.map { (Optional($0.id), $0.name) }, selection: $subjectID)
+            DatePicker(L10n.tr("Data"), selection: $date, displayedComponents: .date).interactiveHover()
+            Toggle(L10n.tr("Specifica un orario"), isOn: $hasTime).interactiveHover()
+            if hasTime { DatePicker(L10n.tr("Ora"), selection: $date, displayedComponents: .hourAndMinute).interactiveHover() }
+            StudyTextEntry(L10n.tr("Note / aula"), text: $note, axis: .vertical).textFieldStyle(StudyTextFieldStyle()).interactiveHover(textEntry: true).lineLimit(3...5)
             if let saveError { Text(saveError).foregroundStyle(appTheme.appearance.destructiveInk) }
             HStack {
-                Button("Annulla") { dismiss() }; Spacer()
-                Button("Salva esame") {
+                Button(L10n.tr("Annulla")) { dismiss() }; Spacer()
+                Button(L10n.tr("Salva esame")) {
                     let model = exam ?? StudyExam(title: "", date: date)
                     if exam == nil { store.context.insert(model) }
                     model.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
                     model.date = hasTime ? date : Calendar.current.startOfDay(for: date)
                     model.hasTime = hasTime; model.subjectID = subjectID; model.note = note
-                    if store.save() { dismiss() } else { store.context.rollback(); store.refresh(); saveError = "Impossibile salvare. Riprova." }
+                    if store.save() { dismiss() } else { store.context.rollback(); store.refresh(); saveError = L10n.tr("Impossibile salvare. Riprova.") }
                 }.buttonStyle(ResponsiveButtonStyle(prominent: true)).disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }.padding(DesignSystem.PreservedGeometry.gap28).frame(width: DesignSystem.PreservedGeometry.points480)
@@ -185,6 +187,7 @@ func calendarPigmentStops(_ shares: [CalendarSubjectShare], theme appTheme: Reso
 }
 
 private struct CalendarDayCell: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     let date: Date
     let shares: [CalendarSubjectShare]
@@ -196,7 +199,7 @@ private struct CalendarDayCell: View {
     @FocusState private var focused: Bool
     private var total: Double { shares.reduce(0) { $0 + $1.seconds } }
     private var details: String {
-        ([date.formatted(date: .complete, time: .omitted), "Totale: " + durationText(total)] + shares.map { "\($0.name) · \(durationText($0.seconds)) · \(($0.fraction * 100).formatted(.number.precision(.fractionLength(0...1))))%" } + ["\(examCount) esami"]).joined(separator: "\n")
+        ([L10n.date(date, complete: true), L10n.tr("Totale: ") + durationText(total)] + shares.map { "\($0.name) · \(durationText($0.seconds)) · \(($0.fraction * 100).formatted(.number.precision(.fractionLength(0...1)).locale(L10n.locale)))%" } + [L10n.count(examCount, singular: "%@ esame", plural: "%@ esami")]).joined(separator: "\n")
     }
     var body: some View {
         Button(action: action) {
@@ -236,7 +239,7 @@ private struct CalendarDayCell: View {
         .onHover { hovered = $0; if !$0 { dismissedDetails = false } }
         .onChange(of: focused) { if !focused { dismissedDetails = false } }
         .onKeyPress(.escape) { dismissedDetails = true; return .handled }
-        .accessibilityLabel(details).accessibilityHint("Seleziona per vedere le sessioni del giorno")
+        .accessibilityLabel(details).accessibilityHint(L10n.tr("Seleziona per vedere le sessioni del giorno"))
         .anchorPreference(key: CalendarDayTooltipKey.self, value: .bounds) { anchor in
             (hovered || focused) && !dismissedDetails ? CalendarDayTooltipItem(anchor: anchor, details: details) : nil
         }

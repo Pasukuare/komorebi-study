@@ -52,7 +52,7 @@ enum SubjectIcons {
             .init(id: "leaf", name: "Foglia"), .init(id: "flag", name: "Traguardo")])
     ]
     static var all: [SubjectSymbol] { categories.flatMap(\.symbols) }
-    static func name(for symbol: String) -> String { all.first { $0.id == symbol }?.name ?? "Icona attuale" }
+    static func name(for symbol: String) -> String { L10n.tr(all.first { $0.id == symbol }?.name ?? "Icona attuale") }
 }
 struct SubjectIconTile: View {
     @Environment(\.studyTheme) private var appTheme
@@ -69,6 +69,7 @@ struct SubjectIconTile: View {
     }
 }
 struct SubjectIconPicker: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @Binding var selection: String
     let color: Color
@@ -96,24 +97,25 @@ struct SubjectIconPicker: View {
                 guard key.modifiers.isEmpty else { return .ignored }
                 activate(); return .handled
             }
-            .accessibilityLabel("Icona della materia").accessibilityValue(SubjectIcons.name(for: selection))
+            .accessibilityLabel(L10n.tr("Icona della materia")).accessibilityValue(SubjectIcons.name(for: selection))
             .popover(isPresented: $showing, arrowEdge: .bottom) {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                             ForEach(SubjectIcons.categories) { category in
                                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                                    Text(category.name).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                                    Text(L10n.tr(category.name)).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
                                     LazyVGrid(columns: Array(repeating: GridItem(.fixed(DesignSystem.Interaction.controlHeight), spacing: DesignSystem.Spacing.xs), count: 6), spacing: DesignSystem.Spacing.xs) {
                                         ForEach(category.symbols) { icon in
                                             Button { selection = icon.id; showing = false } label: {
                                                 SubjectIconTile(symbol: icon.id, color: color)
                                                     .frame(width: DesignSystem.Interaction.controlHeight, height: DesignSystem.Interaction.controlHeight)
-                                                    .overlay(RoundedRectangle(cornerRadius: DesignSystem.SubjectAppearance.radius).stroke(selection == icon.id || focusedIcon == icon.id ? color : .clear, lineWidth: DesignSystem.Interaction.focusWidth).allowsHitTesting(false))
+                                                    .overlay(StudySelectionBorder(selected: selection == icon.id, color: color, radius: DesignSystem.SubjectAppearance.radius, explicitFocus: focusedIcon == icon.id))
                                                     .contentShape(RoundedRectangle(cornerRadius: DesignSystem.SubjectAppearance.radius))
                                             }.id(icon.id).buttonStyle(.plain)
-                                                .interactiveHover(cornerRadius: DesignSystem.SubjectAppearance.radius)
-                                                .help(icon.name).accessibilityLabel(icon.name)
+                                                .interactiveHover(cornerRadius: DesignSystem.SubjectAppearance.radius, selected: selection == icon.id)
+                                                .modifier(KeyboardFocusBorder(radius: DesignSystem.SubjectAppearance.radius, explicitFocus: focusedIcon == icon.id))
+                                                .help(L10n.tr(icon.name)).accessibilityLabel(L10n.tr(icon.name))
                                                 .accessibilityAddTraits(selection == icon.id ? .isSelected : [])
                                         }
                                     }
@@ -157,6 +159,7 @@ struct SubjectIconPicker: View {
     }
 }
 struct SubjectColorPicker: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @Binding var selection: String
     var isEditing = false
@@ -180,14 +183,14 @@ struct SubjectColorPicker: View {
                     Button { focusedColor = choice.id; selection = choice.id } label: {
                         Circle().fill(choice.ink).frame(width: DesignSystem.SubjectAppearance.swatch, height: DesignSystem.SubjectAppearance.swatch)
                             .frame(width: DesignSystem.SubjectAppearance.swatchHitArea, height: DesignSystem.Interaction.controlHeight)
-                            .overlay(Circle().stroke(choice.ink, lineWidth: appTheme.subjectChoice(selection).id == choice.id ? DesignSystem.Interaction.focusWidth : 0).padding(DesignSystem.Spacing.xxs).allowsHitTesting(false))
+                            .overlay(StudySelectionBorder(selected: appTheme.subjectChoice(selection).id == choice.id, color: choice.ink, shape: .circle, explicitFocus: focusedColor == choice.id).padding(DesignSystem.Spacing.xxs))
                             .contentShape(Circle())
                     }.buttonStyle(.plain).focusable(interactions: .edit).focusEffectDisabled().focused($focusedColor, equals: choice.id)
-                        .interactiveHover(cornerRadius: DesignSystem.Radius.panel)
-                        .modifier(KeyboardFocusBorder(radius: DesignSystem.Radius.panel, explicitFocus: focusedColor == choice.id))
+                        .interactiveHover(cornerRadius: DesignSystem.Radius.panel, shape: .circle, selected: appTheme.subjectChoice(selection).id == choice.id)
+                        .modifier(KeyboardFocusBorder(radius: DesignSystem.Radius.panel, explicitFocus: focusedColor == choice.id, shape: .circle))
                         .onKeyPress(.return) { selection = choice.id; return .handled }
                         .onKeyPress(.space) { selection = choice.id; return .handled }
-                        .help(choice.name).accessibilityLabel(choice.name)
+                        .help(L10n.tr(choice.name)).accessibilityLabel(L10n.tr(choice.name))
                         .accessibilityAddTraits(appTheme.subjectChoice(selection).id == choice.id ? .isSelected : [])
                 }
             }.onMoveCommand { direction in
@@ -195,7 +198,7 @@ struct SubjectColorPicker: View {
                 if direction == .right, index + 1 < colors.count { focusedColor = colors[index + 1].id }
                 if direction == .left, index > 0 { focusedColor = colors[index - 1].id }
             }
-        }.accessibilityElement(children: .contain).accessibilityLabel("Colore della materia")
+        }.accessibilityElement(children: .contain).accessibilityLabel(L10n.tr("Colore della materia"))
             .onAppear { if !initialized { resetTab() } }
             .onChange(of: isEditing) { resetTab() }
             .onChange(of: selection) { if isEditing, let group = SubjectColorGroup.group(for: selection) { tab = group } }
@@ -208,6 +211,7 @@ struct SubjectColorPicker: View {
     }
 }
 private struct ColorGroupTab: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @FocusState private var focused: Bool
     let group: SubjectColorGroup
@@ -226,6 +230,6 @@ private struct ColorGroupTab: View {
             .modifier(KeyboardFocusBorder(radius: DesignSystem.Radius.action, explicitFocus: focused))
             .onKeyPress(.return) { action(); return .handled }
             .onKeyPress(.space) { action(); return .handled }
-            .accessibilityLabel("Palette " + group.title).accessibilityAddTraits(selected ? .isSelected : [])
+            .accessibilityLabel(L10n.tr("Palette ") + group.title).accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

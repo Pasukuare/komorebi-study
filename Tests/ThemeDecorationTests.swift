@@ -6,18 +6,18 @@ import AppKit
 @MainActor final class ThemeDecorationTests: XCTestCase {
     func testDefaultsAndCopyOnlyAffectRequestedOptionalContent() {
         let package = HalloweenTheme.package
-        XCTAssertEqual(package.options.map(\.id), [ThemeOptionID.decorations, ThemeOptionID.themedText])
+        XCTAssertEqual(package.options.map(\.id), [ThemeOptionID.decorations])
         let standard = package.resolve(mode: .dark)
         XCTAssertTrue(standard.decorationsEnabled)
         XCTAssertEqual(standard.copy.text(.timerSubtitle, fallback: "Standard"), "Standard")
         let themed = package.resolve(mode: .dark, options: [ThemeOptionID.themedText: true])
-        XCTAssertEqual(themed.copy.text(.timerSubtitle, fallback: "Standard"), "La notte è lunga, una cosa alla volta.")
-        XCTAssertEqual(themed.copy.streak(1), "1 notte di fila")
-        XCTAssertEqual(themed.copy.streak(7), "7 notti di fila")
-        XCTAssertEqual(themed.copy.streak(0), "0 notti di fila")
+        XCTAssertEqual(themed.copy.text(.timerSubtitle, fallback: "Standard"), "Timer")
+        XCTAssertEqual(themed.copy.streak(1), "Serie: 1 giorno")
+        XCTAssertEqual(themed.copy.streak(7), "Serie: 7 giorni")
+        XCTAssertEqual(themed.copy.streak(0), "Serie: 0 giorni")
         XCTAssertEqual(themed.copy.emptyIllustration, .ghost)
         XCTAssertEqual(standard.copy.emptyIllustration, .standard)
-        XCTAssertEqual(standard.copy.streak(1), "1 giorno di costanza")
+        XCTAssertEqual(standard.copy.streak(1), "Serie: 1 giorno")
         XCTAssertFalse(ThemeArtwork.bat.isEmpty)
         XCTAssertFalse(ThemeArtwork.ghost.isEmpty)
         XCTAssertEqual(standard.decoration.particleCount, 7)
@@ -59,7 +59,7 @@ import AppKit
             store.settings.appearance = mode
             let resolved = ThemeRegistry.resolve(settings: store.settings, system: .light)
             XCTAssertFalse(resolved.decorationsEnabled)
-            XCTAssertEqual(resolved.copy.streak(1), "1 notte di fila")
+            XCTAssertEqual(resolved.copy.streak(1), "Serie: 1 giorno")
             XCTAssertTrue(resolved.package.behavior.replacesLandscapes)
             XCTAssertEqual(store.settings.landscape, "Night")
         }
@@ -74,6 +74,6 @@ import AppKit
         reopened.settings.themeID = HalloweenTheme.package.id
         let restored = ThemeRegistry.resolve(settings: reopened.settings, system: .light)
         XCTAssertFalse(restored.decorationsEnabled)
-        XCTAssertEqual(restored.copy.streak(7), "7 notti di fila")
+        XCTAssertEqual(restored.copy.streak(7), "Serie: 7 giorni")
     }
 }

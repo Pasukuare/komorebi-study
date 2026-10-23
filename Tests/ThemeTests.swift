@@ -88,7 +88,7 @@ import AppKit
             XCTAssertEqual(resolved.decoration.hillCount, DesignSystem.PreservedDecoration.hillCount)
             XCTAssertEqual(resolved.decoration.particleCount, DesignSystem.PreservedDecoration.particleCount)
             XCTAssertEqual(resolved.decoration.parallax, DesignSystem.PreservedDecoration.parallax)
-            XCTAssertEqual(resolved.copy.streak(7), "7 giorni di costanza")
+            XCTAssertEqual(resolved.copy.streak(7), "Serie: 7 giorni")
             XCTAssertEqual(resolved.subjectChoice("futura.ignota").id, "futura.ignota")
             assertColor(resolved.subjectColor("futura.ignota"), resolved.subjectColor(SubjectColorID.neutralID))
         }

@@ -104,7 +104,7 @@ extension AppearanceTests {
         }
     }
     func testLogoBelongsToPackageAndHasReadableTint() {
-        XCTAssertEqual(ThemeRegistry.defaultPackage.logoMark.artwork, .systemSymbol("leaf.fill"))
+        XCTAssertEqual(ThemeRegistry.defaultPackage.logoMark.artwork, .pagesAndLight)
         XCTAssertEqual(HalloweenTheme.package.logoMark.artwork, .jackOLantern)
         for mode in ThemeMode.allCases {
             let theme = HalloweenTheme.package.resolve(mode: mode)
