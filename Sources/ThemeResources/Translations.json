@@ -440,5 +440,8 @@
   "Le frasi restano uguali in tutti i temi e non vengono tradotte.": "Your messages stay the same in all themes and are not translated.",
   "Barra dei menu": "Menu bar",
   "Home": "Home",
-  "Timer": "Timer"
+  "Timer": "Timer",
+  "Esame oggi": "Exam today",
+  "Esame domani": "Exam tomorrow",
+  "Esame tra %@ giorni": "Exam in %@ days"
 }

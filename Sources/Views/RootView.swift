@@ -465,10 +465,8 @@ struct OverviewView: View {
                         PersonalPhrase(slot: .home)
                     }
                     Spacer()
-                    if store.streak > 0 {
-                        Label(appTheme.copy.streak(store.streak), systemImage: "leaf")
-                            .font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.accent).padding(.top, DesignSystem.Spacing.xs)
-                    }
+                    HomeExamCountdown(exams: store.exams, date: store.now, streak: store.streak)
+                        .frame(maxWidth: DesignSystem.PreservedGeometry.points280, alignment: .trailing)
                 }
                 ForEach(ThemeCampaign.available(settings: store.settings, date: store.now)) { campaign in
                     ThemeSuggestionCard(campaign: campaign, open: openThemeSettings) { store.dismissThemeCampaign(campaign.id) }
@@ -645,4 +643,53 @@ private struct ThemeSuggestionCard: View {
     }
     func stop() { hideTask?.cancel(); hideTask = nil }
     deinit { hideTask?.cancel() }
+}
+
+/// Uses local calendar days (not 24-hour divisions), so DST does not shift the countdown.
+/// Like the existing upcoming-exams card, exams remain current throughout their calendar day.
+struct NextExamCountdown {
+    let id: UUID
+    let title: String
+    let date: Date
+    let days: Int
+    static func nearest(in exams: [StudyExam], at date: Date, calendar: Calendar = .current) -> NextExamCountdown? {
+        let today = calendar.startOfDay(for: date)
+        guard let next = exams.filter({ calendar.startOfDay(for: $0.date) >= today }).min(by: {
+            $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date < $1.date
+        }) else { return nil }
+        let days = calendar.dateComponents([.day], from: today, to: calendar.startOfDay(for: next.date)).day ?? 0
+        return NextExamCountdown(id: next.id, title: next.title, date: next.date, days: days)
+    }
+    var countdownText: String {
+        switch days {
+        case 0: return L10n.tr("Esame oggi")
+        case 1: return L10n.tr("Esame domani")
+        default: return L10n.tr("Esame tra %@ giorni", String(days))
+        }
+    }
+}
+
+struct HomeExamCountdown: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
+    @Environment(\.studyTheme) private var theme
+    let exams: [StudyExam]
+    let date: Date
+    let streak: Int
+    var body: some View {
+        VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xs) {
+            if let next = NextExamCountdown.nearest(in: exams, at: date) {
+                VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xxs) {
+                    Text(next.countdownText).font(theme.typography.small).foregroundStyle(theme.palette.accent)
+                    Text(verbatim: next.title).font(theme.preservedTypography.caption)
+                        .foregroundStyle(theme.palette.textSecondary).lineLimit(2)
+                }.multilineTextAlignment(.trailing).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityElement(children: .combine)
+                    .help(next.title + " · " + L10n.date(next.date))
+            }
+            if streak > 0 {
+                Text(theme.copy.streak(streak)).font(theme.preservedTypography.caption)
+                    .foregroundStyle(theme.palette.accent)
+            }
+        }.padding(.top, DesignSystem.Spacing.xs)
+    }
 }
