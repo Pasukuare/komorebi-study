@@ -66,3 +66,28 @@ import SwiftUI
         }
     }
 }
+
+extension ExamCountdownTests {
+    func testLinkedExamCaseAliasUsesSubjectSpellingWithoutChangingStoredTitle() throws {
+        let store = try StudyStore(inMemory: true, defaults: UserDefaults(suiteName: "ExamCase.\(UUID())")!)
+        let subject = Subject(name: "Teoria dei Sistemi")
+        store.context.insert(subject)
+        let exam = StudyExam(title: "Teoria Dei Sistemi", date: date(11,20), subjectID: subject.id)
+        store.context.insert(exam); XCTAssertTrue(store.save())
+        XCTAssertEqual(store.examDisplayTitle(exam), "Teoria dei Sistemi")
+        let next = try XCTUnwrap(NextExamCountdown.nearest(in: [exam], at: date(10,24), titleForExam: store.examDisplayTitle))
+        XCTAssertEqual(next.title, "Teoria dei Sistemi")
+        XCTAssertEqual(exam.title, "Teoria Dei Sistemi", "Display must not rewrite the saved exam title")
+        subject.name = "teoria dei sistemi"; XCTAssertTrue(store.save())
+        XCTAssertEqual(store.examDisplayTitle(exam), subject.name)
+        XCTAssertEqual(exam.title, "Teoria Dei Sistemi")
+    }
+    func testDistinctExamTitlesAndUnlinkedExamsRemainExactlyAsWritten() {
+        let custom = StudyExam(title: "Parziale di Teoria Dei Sistemi", date: Date())
+        XCTAssertEqual(custom.displayTitle(linkedSubjectName: "Teoria dei Sistemi"), custom.title)
+        let unlinked = StudyExam(title: "Teoria Dei Sistemi", date: Date())
+        XCTAssertEqual(unlinked.displayTitle(linkedSubjectName: nil), unlinked.title)
+        let accent = StudyExam(title: "Fisicà", date: Date())
+        XCTAssertEqual(accent.displayTitle(linkedSubjectName: "Fisica"), "Fisicà")
+    }
+}

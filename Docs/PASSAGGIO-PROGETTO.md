@@ -1,7 +1,9 @@
 # Komorebi Study — passaggio di progetto
 
-Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 21** (materie completate: tutti i sette compiti implementati).
+Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 22** (grafia dei nomi degli esami allineata alla materia collegata).
 Destinatario: sviluppatore o agente incaricato di correggere bug, verificare le prestazioni e continuare lo sviluppo.
+
+La build 22 risolve la differenza tra titolo esame «Teoria Dei Sistemi» e materia «Teoria dei Sistemi»: quando differiscono solo per maiuscole/minuscole, la visualizzazione segue la materia. Titoli distinti e dati salvati non vengono riscritti. Vedere `Docs/Nomi-esami-build22.md`.
 
 La build 21 completa i compiti 3–7: migrazione protetta/additiva di voto e data, due sezioni Materie, catalogo condiviso attive/completate, filtri di consultazione e nomi letterali. Il backup personale pre-intervento è in `~/Library/Application Support/Komorebi Study/Backups/Pre-completamento-20261024-094409`; la build esegue un altro backup automatico prima dell’apertura di archivi da migrare. Non è stata eseguita migrazione sull’archivio personale durante le prove. Leggere `Docs/Materie-compiti3-7.md` prima del primo avvio e per i limiti delle verifiche.
 

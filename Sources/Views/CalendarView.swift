@@ -95,7 +95,7 @@ struct ExamRow: View {
         HStack(spacing: DesignSystem.Spacing.legacy14) {
             Image(systemName: "graduationcap").foregroundStyle(appTheme.palette.accent).font(appTheme.preservedTypography.title2)
             VStack(alignment: .leading, spacing: DesignSystem.PreservedGeometry.gap5) {
-                Text(verbatim: exam.title).textCase(nil).font(appTheme.preservedTypography.headline)
+                Text(verbatim: store.examDisplayTitle(exam)).textCase(nil).font(appTheme.preservedTypography.headline)
                 if let subject = store.subjects.first(where: { $0.id == exam.subjectID }) { Text(verbatim: subject.name).textCase(nil).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary) }
                 if !exam.note.isEmpty { Text(exam.note).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary).lineLimit(2) }
             }

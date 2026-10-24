@@ -224,6 +224,14 @@ func clockText(_ seconds: Double) -> String {
         id = UUID(); self.title = title; self.date = date; self.hasTime = hasTime; self.subjectID = subjectID; self.note = note
     }
 }
+extension StudyExam {
+    /// A subject-name alias follows the linked subject's spelling; custom exam titles stay literal.
+    /// This is a display rule only: the original title and historical records are never rewritten.
+    func displayTitle(linkedSubjectName: String?) -> String {
+        guard let name = linkedSubjectName, title.caseInsensitiveCompare(name) == .orderedSame else { return title }
+        return name
+    }
+}
 struct ExamRecord: Codable {
     var id: UUID; var title: String; var date: Date; var hasTime: Bool; var subjectID: UUID?; var note: String
     init(_ exam: StudyExam) { id = exam.id; title = exam.title; date = exam.date; hasTime = exam.hasTime; subjectID = exam.subjectID; note = exam.note }

@@ -467,7 +467,7 @@ struct OverviewView: View {
                         PersonalPhrase(slot: .home)
                     }
                     Spacer()
-                    HomeExamCountdown(exams: store.homeExams, date: store.now, streak: store.streak)
+                    HomeExamCountdown(exams: store.homeExams, date: store.now, streak: store.streak, titleForExam: store.examDisplayTitle)
                         .frame(maxWidth: DesignSystem.PreservedGeometry.points280, alignment: .trailing)
                 }
                 ForEach(ThemeCampaign.available(settings: store.settings, date: store.now)) { campaign in
@@ -656,13 +656,13 @@ struct NextExamCountdown {
     let title: String
     let date: Date
     let days: Int
-    static func nearest(in exams: [StudyExam], at date: Date, calendar: Calendar = .current) -> NextExamCountdown? {
+    static func nearest(in exams: [StudyExam], at date: Date, calendar: Calendar = .current, titleForExam: (StudyExam) -> String = { $0.title }) -> NextExamCountdown? {
         let today = calendar.startOfDay(for: date)
         guard let next = exams.filter({ calendar.startOfDay(for: $0.date) >= today }).min(by: {
             $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date < $1.date
         }) else { return nil }
         let days = calendar.dateComponents([.day], from: today, to: calendar.startOfDay(for: next.date)).day ?? 0
-        return NextExamCountdown(id: next.id, title: next.title, date: next.date, days: days)
+        return NextExamCountdown(id: next.id, title: titleForExam(next), date: next.date, days: days)
     }
     var countdownText: String {
         switch days {
@@ -679,9 +679,10 @@ struct HomeExamCountdown: View {
     let exams: [StudyExam]
     let date: Date
     let streak: Int
+    var titleForExam: (StudyExam) -> String = { $0.title }
     var body: some View {
         VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xs) {
-            if let next = NextExamCountdown.nearest(in: exams, at: date) {
+            if let next = NextExamCountdown.nearest(in: exams, at: date, titleForExam: titleForExam) {
                 VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xxs) {
                     Text(next.countdownText).font(theme.typography.small).foregroundStyle(theme.palette.accent)
                     Text(verbatim: next.title).textCase(nil).font(theme.preservedTypography.caption)

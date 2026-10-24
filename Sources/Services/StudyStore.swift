@@ -119,6 +119,9 @@ import AppKit
     func subjectChoiceIsAllowed(_ id: UUID?, retaining originalID: UUID?) -> Bool {
         id == originalID || id == nil || id.map(activeSubjectIDs.contains) == true
     }
+    func examDisplayTitle(_ exam: StudyExam) -> String {
+        exam.displayTitle(linkedSubjectName: exam.subjectID.flatMap { subjectsByID[$0]?.name })
+    }
     var homeExams: [StudyExam] { exams.filter { !completedSubjectIDs.contains($0.subjectID ?? Self.unassignedSubjectID) } }
     private static let unassignedSubjectID = UUID()
     var weeklyGoalProgress: Double {
