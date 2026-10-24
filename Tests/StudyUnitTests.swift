@@ -1,5 +1,7 @@
 import XCTest
 import SwiftData
+import SwiftUI
+import AppKit
 @testable import KomorebiStudy
 
 @MainActor final class StudyUnitTests: XCTestCase {
@@ -90,5 +92,57 @@ extension StudyUnitTests {
         let second=try StudyStore(defaults:UserDefaults(suiteName:"UnitMigration2.\(UUID())")!,archiveURL:url)
         XCTAssertEqual(second.sessions.count,1)
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath:directory.appendingPathComponent("Backups").path).count,backups.count)
+    }
+}
+
+
+extension StudyUnitTests {
+    func testSharedDraftValidationReorderAndOptionalEstimate() throws {
+        let s=try store(), subject=try XCTUnwrap(s.subjects.first)
+        var draft=StudyUnitDraft(); XCTAssertFalse(draft.isValid)
+        draft.title="Lezione 1"; XCTAssertTrue(draft.isValid)
+        draft.estimate="non valido"; XCTAssertFalse(draft.isValid)
+        draft.estimate="40,5"; XCTAssertTrue(draft.isValid)
+        draft.kind = .pages; draft.firstPage="10"; draft.lastPage="5"; XCTAssertFalse(draft.isValid)
+        draft.lastPage="20"; XCTAssertTrue(draft.isValid)
+        let unit=StudyUnit(subjectID:subject.id,title:"Originale")
+        draft.apply(to:unit); XCTAssertEqual(unit.pageCount,11); XCTAssertEqual(unit.estimatedMinutes,40.5)
+        s.addUnits(subject:subject,seeds:UnitRules.numbered(from:1,through:3,prefix:"Lezione "),kind:.lesson)
+        let first=try XCTUnwrap(s.unitsBySubject[subject.id]?.first)
+        s.moveUnit(first,by:1); XCTAssertEqual(s.unitsBySubject[subject.id]?[1].id,first.id)
+        s.moveUnit(first,by:-1); XCTAssertEqual(s.unitsBySubject[subject.id]?.first?.id,first.id)
+    }
+    func testUnitManagementRendersInAllThemes() throws {
+        try ThemeFonts.register()
+        let s=try store(), subject=try XCTUnwrap(s.subjects.first)
+        subject.name="Teoria dei Sistemi — nome lungo della materia"
+        s.addUnits(subject:subject,seeds:UnitRules.pages(from:1,through:100,block:15,prefix:"Pagine "),kind:.pages)
+        for package in ThemeRegistry.packages {
+            for mode in ThemeMode.allCases {
+                let theme=package.resolve(mode:mode)
+                let unit=try XCTUnwrap(s.units.first)
+                let views:[(String,AnyView)] = [
+                    ("unita",AnyView(StudyUnitsSection(subject:subject,initiallyExpanded:true))),
+                    ("modifica-unita",AnyView(StudyUnitEditor(subject:subject,unit:unit))),
+                    ("crea-piu-unita",AnyView(StudyUnitsBatchEditor(subject:subject)))
+                ]
+                for (name,view) in views {
+                    let rendered=view.frame(width:760,height:780,alignment:.topLeading).padding(DesignSystem.Spacing.md)
+                        .environmentObject(s).environment(\.studyTheme,theme).environment(\.colorScheme,mode == .dark ? .dark : .light)
+                        .environment(\.komorebiMotion,"Off").foregroundStyle(theme.palette.textPrimary).background(theme.palette.background)
+                        .buttonStyle(ResponsiveButtonStyle()).textFieldStyle(StudyTextFieldStyle())
+                    let host=NSHostingView(rootView:rendered)
+                    let window=NSWindow(contentRect:CGRect(x:0,y:0,width:800,height:820),styleMask:[.borderless],backing:.buffered,defer:false)
+                    window.contentView=host; host.frame=window.contentView!.bounds
+                    host.layoutSubtreeIfNeeded(); RunLoop.main.run(until:Date().addingTimeInterval(0.05)); host.layoutSubtreeIfNeeded()
+                    let bitmap=try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in:host.bounds)); host.cacheDisplay(in:host.bounds,to:bitmap)
+                    if let path=ProcessInfo.processInfo.environment["KOMOREBI_UNITS_REVIEW"] {
+                        let folder=URL(fileURLWithPath:path); try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
+                        try XCTUnwrap(bitmap.representation(using:.png,properties:[:])).write(to:folder.appendingPathComponent("\(name)-\(package.id)-\(mode.rawValue).png"))
+                    }
+                    window.contentView=nil
+                }
+            }
+        }
     }
 }

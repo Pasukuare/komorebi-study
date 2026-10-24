@@ -91,6 +91,7 @@ struct SubjectsView: View {
             Text(L10n.count(summary.count, singular: "%@ sessione salvata", plural: "%@ sessioni salvate"))
                 .font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
             GoalBar(title: L10n.tr("Obiettivo settimanale"), value: summary.week, goal: subject.weeklyGoal * 3600, color: appTheme.subjectColor(subject.color))
+            StudyUnitsSection(subject: subject)
         }
     }
     private func completedCard(_ subject: Subject) -> some View {
@@ -120,6 +121,7 @@ struct SubjectsView: View {
                 Button(L10n.tr("Modifica")) { editing = subject }.fixedSize()
                 CompletedSubjectActions(subject: subject, delete: { deleting = subject })
             }
+            if !(store.unitsBySubject[subject.id] ?? []).isEmpty { StudyUnitsSection(subject: subject) }
         }
     }
 
@@ -382,5 +384,173 @@ private struct CompletedSubjectActions: View {
                 }.padding(DesignSystem.Spacing.md).background(theme.palette.elevatedSurface)
                     .onExitCommand { showing = false }
             }
+    }
+}
+
+
+struct StudyUnitsSection: View {
+    @EnvironmentObject private var store: StudyStore
+    @Environment(\.studyTheme) private var theme
+    let subject: Subject
+    @State private var expanded = false
+    @State private var creating = false
+    @State private var batch = false
+    @State private var editing: StudyUnit?
+    @State private var deleting: StudyUnit?
+    init(subject: Subject, initiallyExpanded: Bool = false) { self.subject = subject; _expanded = State(initialValue:initiallyExpanded) }
+    private var list: [StudyUnit] { store.unitsBySubject[subject.id] ?? [] }
+    var body: some View {
+        VStack(alignment:.leading,spacing:DesignSystem.Spacing.sm) {
+            Button { expanded.toggle() } label: {
+                HStack {
+                    Text(L10n.tr("Unità di studio")).font(theme.typography.heading)
+                    Text(String(list.count)).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+                    Spacer(); Image(systemName:expanded ? "chevron.up" : "chevron.down")
+                }.frame(maxWidth:.infinity).contentShape(Rectangle())
+            }.buttonStyle(.plain).interactiveHover(listRow:true).modifier(KeyboardFocusBorder())
+                .accessibilityValue(expanded ? L10n.tr("Espansa") : L10n.tr("Compressa"))
+            if expanded {
+                if !subject.isCompleted {
+                    HStack {
+                        Button(L10n.tr("Aggiungi unità")) { creating = true }
+                        Button(L10n.tr("Crea più unità")) { batch = true }
+                    }
+                }
+                if list.isEmpty {
+                    Text(L10n.tr("Aggiungi lezioni, capitoli o pagine da studiare")).foregroundStyle(theme.palette.textSecondary)
+                }
+                LazyVStack(alignment:.leading,spacing:DesignSystem.Spacing.sm) {
+                    ForEach(list) { unit in unitRow(unit) }
+                }
+            }
+        }
+        .sheet(isPresented:$creating) { StudyUnitEditor(subject:subject) }
+        .sheet(item:$editing) { StudyUnitEditor(subject:subject,unit:$0) }
+        .sheet(isPresented:$batch) { StudyUnitsBatchEditor(subject:subject) }
+        .alert(L10n.tr("Eliminare l’unità?"),isPresented:Binding(get:{ deleting != nil },set:{ if !$0 { deleting = nil } })) {
+            Button(L10n.tr("Annulla"),role:.cancel) { deleting = nil }
+            Button(L10n.tr("Elimina"),role:.destructive) { if let deleting { store.deleteUnit(deleting) }; deleting = nil }
+        } message: { Text(L10n.tr("Le sessioni e il tempo studiato restano nella cronologia.")) }
+    }
+    private func unitRow(_ unit: StudyUnit) -> some View {
+        VStack(alignment:.leading,spacing:DesignSystem.Spacing.xs) {
+            HStack(alignment:.top) {
+                VStack(alignment:.leading,spacing:DesignSystem.Spacing.xs) {
+                    Text(verbatim:unit.title).font(theme.typography.body).fixedSize(horizontal:false,vertical:true)
+                    Text(unit.unitKind.title + " · " + unit.unitState.title).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+                    Text(durationText(store.unitSeconds[unit.id] ?? 0) + (store.unitEstimates[unit.id].map { " · " + L10n.tr("Stima: %@",durationText($0*60)) } ?? ""))
+                        .font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+                }.frame(maxWidth:.infinity,alignment:.leading)
+                Button { store.moveUnit(unit,by:-1) } label: { Image(systemName:"arrow.up") }
+                    .disabled(list.first?.id == unit.id).help(L10n.tr("Sposta su")).accessibilityLabel(L10n.tr("Sposta su"))
+                Button { store.moveUnit(unit,by:1) } label: { Image(systemName:"arrow.down") }
+                    .disabled(list.last?.id == unit.id).help(L10n.tr("Sposta giù")).accessibilityLabel(L10n.tr("Sposta giù"))
+                Button(L10n.tr("Modifica")) { editing = unit }
+                Button { deleting = unit } label: { Image(systemName:"trash") }
+                    .help(L10n.tr("Elimina unità")).accessibilityLabel(L10n.tr("Elimina unità"))
+            }
+            Divider().overlay(theme.palette.border).allowsHitTesting(false)
+        }.padding(.vertical,DesignSystem.Spacing.xs)
+    }
+}
+
+struct StudyUnitDraft {
+    var title = ""
+    var kind: StudyUnitKind = .lesson
+    var state: StudyUnitState = .todo
+    var estimate = ""
+    var firstPage = ""
+    var lastPage = ""
+    init(unit: StudyUnit? = nil) {
+        guard let unit else { return }
+        title = unit.title; kind = unit.unitKind; state = unit.unitState
+        estimate = unit.estimatedMinutes.map { String($0) } ?? ""
+        firstPage = unit.firstPage.map(String.init) ?? ""; lastPage = unit.lastPage.map(String.init) ?? ""
+    }
+    var isValid: Bool {
+        guard !title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { return false }
+        if !estimate.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty && ProjectionTargetInput.hours(estimate) == nil { return false }
+        if kind == .pages { guard let first = Int(firstPage), let last = Int(lastPage), first > 0, last >= first, last < Int.max else { return false } }
+        return true
+    }
+    func apply(to unit: StudyUnit) {
+        guard isValid else { return }
+        unit.title = title.trimmingCharacters(in:.whitespacesAndNewlines); unit.kind = kind.rawValue; unit.state = state.rawValue
+        unit.estimatedMinutes = ProjectionTargetInput.hours(estimate)
+        unit.firstPage = kind == .pages ? Int(firstPage) : nil; unit.lastPage = kind == .pages ? Int(lastPage) : nil
+    }
+}
+struct StudyUnitEditor: View {
+    @EnvironmentObject private var store: StudyStore
+    @Environment(\.studyTheme) private var theme
+    @Environment(\.dismiss) private var dismiss
+    let subject: Subject
+    var unit: StudyUnit?
+    @State private var draft: StudyUnitDraft
+    init(subject: Subject,unit: StudyUnit? = nil) { self.subject = subject; self.unit = unit; _draft = State(initialValue:StudyUnitDraft(unit:unit)) }
+    var body: some View {
+        VStack(alignment:.leading,spacing:DesignSystem.Spacing.md) {
+            Text(unit == nil ? L10n.tr("Aggiungi unità") : L10n.tr("Modifica unità")).font(theme.typography.heading)
+            ScrollView {
+                VStack(alignment:.leading,spacing:DesignSystem.Spacing.md) {
+                    StudyTextEntry(L10n.tr("Titolo dell’unità"),text:$draft.title,preserveCase:true).textFieldStyle(StudyTextFieldStyle())
+                    StudyDropdown(title:L10n.tr("Tipo"),options:StudyUnitKind.allCases.map { ($0,$0.title) },selection:$draft.kind)
+                    StudyDropdown(title:L10n.tr("Stato"),options:StudyUnitState.allCases.map { ($0,$0.title) },selection:$draft.state)
+                    if draft.kind == .pages {
+                        HStack {
+                            StudyTextEntry(L10n.tr("Pagina iniziale"),text:$draft.firstPage).textFieldStyle(StudyTextFieldStyle())
+                            StudyTextEntry(L10n.tr("Pagina finale"),text:$draft.lastPage).textFieldStyle(StudyTextFieldStyle())
+                        }
+                    }
+                    Text(L10n.tr("Stima in minuti (facoltativa)")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+                    StudyTextEntry(L10n.tr("Nessuna stima manuale"),text:$draft.estimate).textFieldStyle(StudyTextFieldStyle())
+                    Text(L10n.tr("Se lasci vuoto, la stima viene proposta dopo almeno 3 unità finite dello stesso tipo.")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+                    if !draft.isValid { Text(L10n.tr("Inserisci un titolo e valori validi.")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary) }
+                }.padding(.trailing,DesignSystem.Spacing.sm)
+            }.frame(maxHeight:DesignSystem.SubjectEditorLayout.fallbackWindowHeight/2)
+            HStack {
+                Button(L10n.tr("Annulla")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button(L10n.tr("Salva")) {
+                    guard draft.isValid else { return }
+                    let item = unit ?? StudyUnit(subjectID:subject.id,title:draft.title,order:(store.unitsBySubject[subject.id]?.map(\.order).max() ?? -1)+1)
+                    draft.apply(to:item); if unit == nil { store.context.insert(item) }
+                    if store.save() { dismiss() } else { store.context.rollback(); store.refresh() }
+                }.buttonStyle(ResponsiveButtonStyle(prominent:true)).disabled(!draft.isValid).keyboardShortcut(.defaultAction)
+            }
+        }.padding(DesignSystem.Spacing.lg).frame(width:DesignSystem.SubjectEditorLayout.minimumWidth).background(theme.palette.background)
+    }
+}
+struct StudyUnitsBatchEditor: View {
+    @EnvironmentObject private var store: StudyStore
+    @Environment(\.studyTheme) private var theme
+    @Environment(\.dismiss) private var dismiss
+    let subject: Subject
+    @State private var kind: StudyUnitKind = .lesson
+    @State private var prefix = ""
+    @State private var first = 1.0
+    @State private var last = 20.0
+    @State private var block = 15.0
+    private var seeds: [UnitSeed] {
+        let prefix = prefix.isEmpty ? kind.title + " " : prefix
+        return kind == .pages ? UnitRules.pages(from:Int(first),through:Int(last),block:Int(block),prefix:prefix) : UnitRules.numbered(from:Int(first),through:Int(last),prefix:prefix)
+    }
+    var body: some View {
+        VStack(alignment:.leading,spacing:DesignSystem.Spacing.md) {
+            Text(L10n.tr("Crea più unità")).font(theme.typography.heading)
+            StudyDropdown(title:L10n.tr("Tipo"),options:StudyUnitKind.allCases.map { ($0,$0.title) },selection:$kind)
+            StudyTextEntry(L10n.tr("Prefisso (facoltativo)"),text:$prefix,preserveCase:true).textFieldStyle(StudyTextFieldStyle())
+            HStack { Text(L10n.tr("Da")); Spacer(); StudyNumberField(title:L10n.tr("Da"),value:$first,range:1...10000) }
+            HStack { Text(L10n.tr("A")); Spacer(); StudyNumberField(title:L10n.tr("A"),value:$last,range:1...10000) }
+            if kind == .pages { HStack { Text(L10n.tr("Pagine per blocco")); Spacer(); StudyNumberField(title:L10n.tr("Pagine per blocco"),value:$block,range:1...10000) } }
+            Text(L10n.tr("%@ unità da creare",String(seeds.count))).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+            if let first = seeds.first, let last = seeds.last { Text(first.title + " … " + last.title).font(theme.typography.caption).lineLimit(2) }
+            HStack {
+                Button(L10n.tr("Annulla")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button(L10n.tr("Crea")) { store.addUnits(subject:subject,seeds:seeds,kind:kind); if store.error == nil { dismiss() } }
+                    .buttonStyle(ResponsiveButtonStyle(prominent:true)).disabled(seeds.isEmpty).keyboardShortcut(.defaultAction)
+            }
+        }.padding(DesignSystem.Spacing.lg).frame(width:DesignSystem.SubjectEditorLayout.minimumWidth).background(theme.palette.background)
     }
 }
