@@ -4,7 +4,7 @@ struct HistoryView: View {
     @Environment(\.studyTheme) private var appTheme
     @EnvironmentObject var store: StudyStore
     @State private var search = ""
-    @State private var subject = "Tutte"
+    @State private var subject = HistorySubjectSelection.all
     @State private var mode = "Tutte"
     @State private var minMinutes = 0.0
     @State private var from = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? Date()
@@ -17,7 +17,7 @@ struct HistoryView: View {
         let fromLimit = calendar.startOfDay(for: from)
         let toLimit = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: to)) ?? to
         return store.sessions.filter { s in
-            (search.isEmpty || s.note.localizedCaseInsensitiveContains(search) || s.subjectName.localizedCaseInsensitiveContains(search)) && (subject == "Tutte" || s.subjectName == subject) && (mode == "Tutte" || s.timerMode == mode) && s.duration >= minMinutes * 60 && (!dateFilter || (s.startDate >= fromLimit && s.startDate < toLimit))
+            (search.isEmpty || s.note.localizedCaseInsensitiveContains(search) || s.subjectName.localizedCaseInsensitiveContains(search)) && subject.matches(s) && (mode == "Tutte" || s.timerMode == mode) && s.duration >= minMinutes * 60 && (!dateFilter || (s.startDate >= fromLimit && s.startDate < toLimit))
         }
     }
     var body: some View {
@@ -27,7 +27,7 @@ struct HistoryView: View {
             HStack { Text(L10n.tr("Cronologia")).font(appTheme.preservedTypography.pageTitle); Spacer(); Text(L10n.count(visibleSessions.count, singular: "%@ sessione", plural: "%@ sessioni")).foregroundStyle(appTheme.palette.textSecondary) }
             StudyTextEntry(L10n.tr("Cerca materia o note"), text: $search).interactiveHover(textEntry: true).textFieldStyle(StudyTextFieldStyle())
             HStack {
-                StudyDropdown(title: L10n.tr("Materia"), options: [("Tutte", L10n.tr("Tutte le materie"))] + Array(Set(store.sessions.map(\.subjectName))).sorted().map { ($0, $0) }, selection: $subject)
+                StudyDropdown(title: L10n.tr("Materia"), options: [(.all, L10n.tr("Tutte le materie"))] + store.historySubjectChoices, selection: $subject, sectionLabels: store.completedSubjects.first.map { [HistorySubjectSelection.subject($0.id): L10n.tr("Completate")] } ?? [:])
                 StudyDropdown(title: L10n.tr("Modalità"), options: [("Tutte", L10n.tr("Tutte le modalità"))] + TimerMode.allCases.map { ($0.rawValue, $0.displayName) }, selection: $mode)
                 Text(L10n.tr("Min. minuti")); StudyNumberField(title: L10n.tr("Minimo"), value: $minMinutes).frame(width: DesignSystem.TimerLayout.studyField)
             }
@@ -35,7 +35,7 @@ struct HistoryView: View {
             if visibleSessions.isEmpty {
                 StudyEmptyState(symbol: "book.closed", title: store.sessions.isEmpty ? L10n.tr("Nessuna sessione") : L10n.tr("Nessuna sessione qui"), detail: store.sessions.isEmpty ? L10n.tr("Le sessioni salvate appariranno qui.") : L10n.tr("Prova a togliere qualche filtro."), actionTitle: store.sessions.isEmpty ? L10n.tr("Inizia a studiare") : L10n.tr("Azzera filtri")) {
                     if store.sessions.isEmpty { store.openTimer = true }
-                    else { search = ""; subject = "Tutte"; mode = "Tutte"; minMinutes = 0; dateFilter = false }
+                    else { search = ""; subject = .all; mode = "Tutte"; minMinutes = 0; dateFilter = false }
                 }
             }
             else {
@@ -64,7 +64,7 @@ struct SessionEditor: View {
     @State private var pause = 0.0
     @State private var note = ""
     @State private var subjectID: UUID?
-    var valid: Bool { end > start && minutes > 0 && pause >= 0 && (minutes + pause) * 60 <= end.timeIntervalSince(start) + 1 }
+    var valid: Bool { store.subjectChoiceIsAllowed(subjectID, retaining: session.subjectID) && end > start && minutes > 0 && pause >= 0 && (minutes + pause) * 60 <= end.timeIntervalSince(start) + 1 }
     var body: some View {
         Form {
             Text(L10n.tr("Modifica sessione")).font(appTheme.preservedTypography.title2)
@@ -72,12 +72,12 @@ struct SessionEditor: View {
             DatePicker(L10n.tr("Fine"), selection: $end).interactiveHover()
             StudyNumberField(title: L10n.tr("Minuti studiati"), value: $minutes)
             StudyNumberField(title: L10n.tr("Minuti in pausa"), value: $pause)
-            StudyDropdown(title: L10n.tr("Materia"), options: [(session.subjectID, session.subjectName)] + store.subjects.filter { $0.id != session.subjectID }.map { (Optional($0.id), $0.name) }, selection: $subjectID)
+            StudyDropdown(title: L10n.tr("Materia"), options: store.editingSubjectChoices(currentID: session.subjectID, currentName: session.subjectName), selection: $subjectID)
             StudyTextEntry(L10n.tr("Note"), text: $note, axis: .vertical).textFieldStyle(StudyTextFieldStyle()).interactiveHover(textEntry: true).lineLimit(3...6)
             if !valid { Text(L10n.tr("Durata e pause devono rientrare tra inizio e fine.")).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.appearance.destructiveInk) }
             HStack { Button(L10n.tr("Annulla")) { dismiss() }; Spacer(); Button(L10n.tr("Salva")) {
                 session.updateTiming(start: start, end: end, duration: minutes * 60, pause: pause * 60); session.note = note
-                if let subject = store.subjects.first(where: { $0.id == subjectID }) { session.subjectID = subject.id; session.subjectName = subject.name }
+                if subjectID != session.subjectID, let id = subjectID, store.activeSubjectIDs.contains(id), let subject = store.subjectsByID[id] { session.subjectID = subject.id; session.subjectName = subject.name }
                 if store.save() { dismiss() }
             }.disabled(!valid).buttonStyle(ResponsiveButtonStyle(prominent: true)) }
         }.padding(DesignSystem.PreservedGeometry.gap28).frame(width: DesignSystem.PreservedGeometry.points470).onAppear { start = session.startDate; end = session.endDate; minutes = session.duration / 60; pause = session.pauseDuration / 60; note = session.note; subjectID = session.subjectID }

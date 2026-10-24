@@ -178,7 +178,7 @@ struct StatisticsView: View {
     var subjectFilter: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy7) {
             Text(L10n.tr("Materia")).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary)
-            StudyDropdown(title: L10n.tr("Materia"), options: [(nil as UUID?, L10n.tr("Tutte le materie"))] + store.subjects.map { (Optional($0.id), $0.name) }, selection: $subjectID)
+            StudyDropdown(title: L10n.tr("Materia"), options: [(nil as UUID?, L10n.tr("Tutte le materie"))] + store.consultationSubjectChoices, selection: $subjectID, sectionLabels: store.completedSubjects.first.map { [Optional($0.id): L10n.tr("Completate")] } ?? [:])
         }
     }
     func move(_ direction: Int) {

@@ -102,8 +102,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 }.keyboardShortcut("s", modifiers: [.control, .command]).disabled(store.focus)
             }
             CommandMenu(L10n.tr("Studio")) {
-                Button(L10n.tr("Avvia sessione")) { store.start() }.keyboardShortcut(.return, modifiers: .command).disabled(store.active != nil)
-                Button(L10n.tr("Pausa / Riprendi")) { store.toggle() }.keyboardShortcut("p", modifiers: [.command, .shift])
+                Button(L10n.tr("Avvia sessione")) { store.start() }.keyboardShortcut(.return, modifiers: .command).disabled(store.active != nil || store.activeSubjects.isEmpty)
+                Button(L10n.tr("Pausa / Riprendi")) { store.toggle() }.keyboardShortcut("p", modifiers: [.command, .shift]).disabled(store.active == nil && store.activeSubjects.isEmpty)
                 Button(L10n.tr("Termina sessione")) { store.finish() }.keyboardShortcut(".", modifiers: .command).disabled(store.active == nil)
             }
         }

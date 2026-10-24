@@ -71,16 +71,25 @@ import AppKit
         }
         subjectSummaries = result
     }
-    @Published var sessions: [StudySession] = [] { didSet { rebuildSubjectSummaries() } }
+    @Published var sessions: [StudySession] = [] { didSet { rebuildSubjectSummaries(); rebuildHistoryChoices() } }
     @Published var exams: [StudyExam] = []
     @Published var subjects: [Subject] = [] { didSet { rebuildSubjectCatalog() } }
     @Published private(set) var activeSubjects: [Subject] = []
     @Published private(set) var completedSubjects: [Subject] = []
     private(set) var completedSubjectIDs: Set<UUID> = []
-    private var subjectSignature: [String] = []
+    private(set) var activeSubjectIDs: Set<UUID> = []
+    private(set) var subjectsByID: [UUID: Subject] = [:]
+    private(set) var activeSubjectChoices: [(UUID?, String)] = []
+    private(set) var consultationSubjectChoices: [(UUID?, String)] = []
+    private(set) var historySubjectChoices: [(HistorySubjectSelection, String)] = []
+    private struct CatalogKey: Equatable {
+        let id: UUID; let name: String; let icon: String; let color: String
+        let completed: Bool; let completedAt: Date?; let goal: Double
+    }
+    private var subjectSignature: [CatalogKey] = []
     private(set) var subjectCatalogRevision = 0
     private func rebuildSubjectCatalog() {
-        let signature = subjects.map { "\($0.id)|\($0.name)|\($0.icon)|\($0.color)|\($0.isCompleted)|\($0.completedAt?.timeIntervalSince1970 ?? 0)|\($0.weeklyGoal)" }
+        let signature = subjects.map { CatalogKey(id: $0.id, name: $0.name, icon: $0.icon, color: $0.color, completed: $0.isCompleted, completedAt: $0.completedAt, goal: $0.weeklyGoal) }
         guard signature != subjectSignature else { return }
         subjectSignature = signature; subjectCatalogRevision += 1
         activeSubjects = subjects.filter { !$0.isCompleted }
@@ -89,9 +98,28 @@ import AppKit
             return $0.id.uuidString < $1.id.uuidString
         }
         completedSubjectIDs = Set(completedSubjects.map(\.id))
+        activeSubjectIDs = Set(activeSubjects.map(\.id))
+        subjectsByID = Dictionary(uniqueKeysWithValues: subjects.map { ($0.id, $0) })
+        activeSubjectChoices = activeSubjects.map { (Optional($0.id), $0.name) }
+        consultationSubjectChoices = activeSubjectChoices + completedSubjects.map { (Optional($0.id), $0.name) }
+        rebuildHistoryChoices()
         if let id = nextSubject, !activeSubjects.contains(where: { $0.id == id }) { nextSubject = nil }
         if let id = settings.lastSubject, !activeSubjects.contains(where: { $0.id == id }) { settings.lastSubject = activeSubjects.first?.id }
     }
+    private func rebuildHistoryChoices() {
+        let legacy = Set(sessions.filter { $0.subjectID == nil || subjectsByID[$0.subjectID!] == nil }.map(\.subjectName)).sorted()
+        historySubjectChoices = activeSubjects.map { (.subject($0.id), $0.name) }
+            + legacy.map { (.legacyName($0), $0) }
+            + completedSubjects.map { (.subject($0.id), $0.name) }
+    }
+    /// Editing retains the original identity (including deleted subjects); alternatives are active only.
+    func editingSubjectChoices(currentID: UUID?, currentName: String) -> [(UUID?, String)] {
+        [(currentID, currentName)] + activeSubjectChoices.filter { $0.0 != currentID }
+    }
+    func subjectChoiceIsAllowed(_ id: UUID?, retaining originalID: UUID?) -> Bool {
+        id == originalID || id == nil || id.map(activeSubjectIDs.contains) == true
+    }
+    var homeExams: [StudyExam] { exams.filter { !completedSubjectIDs.contains($0.subjectID ?? Self.unassignedSubjectID) } }
     private static let unassignedSubjectID = UUID()
     var weeklyGoalProgress: Double {
         let saved = sessions.reduce(0.0) { sum, session in
@@ -104,6 +132,7 @@ import AppKit
     @Published var completed: StudySession?
     @Published var error: String?
     @Published var focus = false
+    @Published var openSubjects = false
     @Published var openTimer = false
     @Published var cycles = 0
     private var ticker: Timer?
@@ -147,7 +176,7 @@ import AppKit
         }
         return interval.contains(a.start) ? min(a.elapsed(at: now), a.target ?? .greatestFiniteMagnitude) : 0
     }
-    func prepareNext(_ a: ActiveTimer) { nextSubject = a.subjectID; nextMode = a.mode }
+    func prepareNext(_ a: ActiveTimer) { nextSubject = a.subjectID.flatMap { activeSubjectIDs.contains($0) ? $0 : nil } ?? activeSubjects.first?.id; nextMode = a.mode }
     func skipBreak() {
         guard let a = active, a.isBreak else { return }
         prepareNext(a); active = nil; persistActive(); scheduleNotification()
@@ -261,7 +290,7 @@ import AppKit
     var preparedSummary: String {
         preparedMode.displayName + (preparedTarget.map { " · " + durationText($0) } ?? L10n.tr(" · senza limite"))
     }
-    func chooseSubject(_ id: UUID?) { settings.lastSubject = id; nextSubject = nil }
+    func chooseSubject(_ id: UUID?) { guard id == nil || id.map(activeSubjectIDs.contains) == true else { return }; settings.lastSubject = id; nextSubject = nil }
     func chooseMode(_ mode: TimerMode) { settings.preferredMode = mode; nextMode = nil }
     func start() {
         guard active == nil else { return }

@@ -119,3 +119,43 @@ extension CompletedSubjectsTests {
         XCTAssertEqual(s.subjectSummaries.values.reduce(0) { $0+$1.count }, 35)
     }
 }
+
+extension CompletedSubjectsTests {
+    func testSharedChoicesConsultationHistoryAndExamsOnCompleteAndReopen() throws {
+        let s = try store(); let original = s.subjects.first!
+        let active = Subject(name: "Teoria dei Sistemi")
+        let completed = Subject(name: "Misure Elettroniche"); completed.isCompleted = true
+        s.context.insert(active); s.context.insert(completed)
+        let exam = StudyExam(title: "Misure Elettroniche", date: s.now.addingTimeInterval(86400), subjectID: completed.id)
+        let openExam = StudyExam(title: "Teoria dei Sistemi", date: s.now.addingTimeInterval(172800), subjectID: active.id)
+        s.context.insert(exam); s.context.insert(openExam)
+        let session = StudySession(start: s.now.addingTimeInterval(-3600), end: s.now, duration: 3600, subjectID: completed.id, subjectName: "Misure Elettroniche", mode: "Pomodoro", pause: 0)
+        s.context.insert(session); XCTAssertTrue(s.save())
+        XCTAssertFalse(s.activeSubjectChoices.contains { $0.0 == completed.id })
+        XCTAssertEqual(s.consultationSubjectChoices.last?.0, completed.id)
+        XCTAssertEqual(s.historySubjectChoices.last?.0, .subject(completed.id))
+        XCTAssertTrue(HistorySubjectSelection.subject(completed.id).matches(session))
+        XCTAssertEqual(s.homeExams.map(\.id), [openExam.id])
+        XCTAssertEqual(NextExamCountdown.nearest(in: s.homeExams, at: s.now)?.id, openExam.id)
+        let options = s.editingSubjectChoices(currentID: session.subjectID, currentName: session.subjectName)
+        XCTAssertEqual(options.first?.0, completed.id)
+        XCTAssertTrue(options.contains { $0.0 == active.id }); XCTAssertEqual(options.filter { $0.0 == completed.id }.count,1)
+        XCTAssertTrue(s.subjectChoiceIsAllowed(completed.id, retaining: completed.id))
+        XCTAssertFalse(s.subjectChoiceIsAllowed(completed.id, retaining: original.id))
+        let before = session.subjectName
+        completed.isCompleted = false; XCTAssertTrue(s.save())
+        XCTAssertTrue(s.activeSubjectIDs.contains(completed.id)); XCTAssertEqual(s.homeExams.count,2)
+        XCTAssertEqual(session.subjectName,before)
+        XCTAssertEqual(NextExamCountdown.nearest(in: s.homeExams, at: s.now)?.id, exam.id)
+        for subject in s.subjects { subject.isCompleted = true }; XCTAssertTrue(s.save())
+        XCTAssertTrue(s.activeSubjectChoices.isEmpty); XCTAssertNil(s.preparedSubject)
+        s.start(); XCTAssertNil(s.active)
+    }
+    func testLegacyNamesRemainConsultableWithoutCaseChangesOrSentinelCollision() throws {
+        let s = try store()
+        let legacy = StudySession(start: s.now.addingTimeInterval(-1000), end: s.now, duration: 1000, subjectID: UUID(), subjectName: "Tutte", mode: "Cronometro", pause: 0)
+        s.context.insert(legacy); XCTAssertTrue(s.save())
+        XCTAssertTrue(s.historySubjectChoices.contains { $0.0 == .legacyName("Tutte") })
+        XCTAssertTrue(HistorySubjectSelection.legacyName("Tutte").matches(legacy))
+    }
+}

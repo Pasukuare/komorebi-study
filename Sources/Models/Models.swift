@@ -91,6 +91,16 @@ enum PersonalPhraseSlot: String, CaseIterable, Identifiable {
         }
     }
 }
+enum HistorySubjectSelection: Hashable {
+    case all, subject(UUID), legacyName(String)
+    func matches(_ session: StudySession) -> Bool {
+        switch self {
+        case .all: return true
+        case .subject(let id): return session.subjectID == id
+        case .legacyName(let name): return session.subjectName == name
+        }
+    }
+}
 struct UserSettings: Codable, Equatable {
     var completedSubjectsExpanded: Bool?
     var personalPhrases: [String: String]?

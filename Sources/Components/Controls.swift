@@ -8,6 +8,7 @@ struct StudyDropdown<Value: Hashable>: View {
     let title: String
     let options: [(Value, String)]
     @Binding var selection: Value
+    var sectionLabels: [Value: String] = [:]
     @State private var showing = false
     @FocusState private var fieldFocused: Bool
     @State private var rowFocused: Int?
@@ -48,6 +49,13 @@ struct StudyDropdown<Value: Hashable>: View {
                     ScrollView {
                         VStack(spacing: DesignSystem.Spacing.xxs) {
                             ForEach(options.indices, id: \.self) { index in
+                                if let header = sectionLabels[options[index].0] {
+                                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                                        Divider()
+                                        Text(header).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                                    }.padding(.horizontal, DesignSystem.Spacing.sm)
+                                        .accessibilityAddTraits(.isHeader).allowsHitTesting(false)
+                                }
                                 Button {
                                     selection = options[index].0; showing = false
                                 } label: {
@@ -102,6 +110,7 @@ struct StudyDropdown<Value: Hashable>: View {
             }
             .onChange(of: showing) { if !showing { fieldFocused = true } }
             .disabled(options.isEmpty)
+            .onChange(of: options.map { $0.0 }) { rowFocused = selectedIndex ?? options.indices.first }
     }
 }
 /// Scoped to this visible popover and this app; removed when the popover closes.

@@ -462,5 +462,8 @@
   "Aggiungi data": "Add date",
   "Nota del voto precedente": "Previous grade note",
   "Riapri": "Reopen",
-  "Azioni della materia": "Subject actions"
+  "Azioni della materia": "Subject actions",
+  "Nessuna materia da completare": "No subjects to complete",
+  "Aggiungi o riapri una materia per iniziare": "Add or reopen a subject to start",
+  "Aggiungi una materia": "Add a subject"
 }

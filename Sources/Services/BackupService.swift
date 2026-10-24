@@ -139,6 +139,6 @@ extension ColorIDMigrationBackup {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, "SELECT 1 FROM ZSUBJECT WHERE ZCOMPLETIONVERSION IS NULL LIMIT 1", -1, &statement, nil) == SQLITE_OK else { return true }
         defer { sqlite3_finalize(statement) }
-        return sqlite3_step(statement) == SQLITE_ROW
+        return sqlite3_step(statement) != SQLITE_DONE
     }
 }

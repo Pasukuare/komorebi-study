@@ -120,11 +120,18 @@ struct ExamEditor: View {
     @State private var subjectID: UUID?
     @State private var note = ""
     @State private var saveError: String?
+    private var subjectOptions: [(UUID?, String)] {
+        let choices: [(UUID?, String)]
+        if let id = exam?.subjectID {
+            choices = store.editingSubjectChoices(currentID: id, currentName: store.subjectsByID[id]?.name ?? L10n.tr("Materia"))
+        } else { choices = store.activeSubjectChoices }
+        return [(nil, L10n.tr("Nessuna materia"))] + choices
+    }
     var body: some View {
         Form {
             Text(exam == nil ? L10n.tr("Nuovo esame") : L10n.tr("Modifica esame")).font(appTheme.preservedTypography.editorTitle)
             StudyTextEntry(L10n.tr("Nome esame"), text: $title).textFieldStyle(StudyTextFieldStyle()).interactiveHover(textEntry: true)
-            StudyDropdown(title: L10n.tr("Materia"), options: [(nil as UUID?, L10n.tr("Nessuna materia"))] + store.subjects.map { (Optional($0.id), $0.name) }, selection: $subjectID)
+            StudyDropdown(title: L10n.tr("Materia"), options: subjectOptions, selection: $subjectID)
             DatePicker(L10n.tr("Data"), selection: $date, displayedComponents: .date).interactiveHover()
             Toggle(L10n.tr("Specifica un orario"), isOn: $hasTime).interactiveHover()
             if hasTime { DatePicker(L10n.tr("Ora"), selection: $date, displayedComponents: .hourAndMinute).interactiveHover() }
@@ -139,7 +146,7 @@ struct ExamEditor: View {
                     model.date = hasTime ? date : Calendar.current.startOfDay(for: date)
                     model.hasTime = hasTime; model.subjectID = subjectID; model.note = note
                     if store.save() { dismiss() } else { store.context.rollback(); store.refresh(); saveError = L10n.tr("Impossibile salvare. Riprova.") }
-                }.buttonStyle(ResponsiveButtonStyle(prominent: true)).disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }.buttonStyle(ResponsiveButtonStyle(prominent: true)).disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !store.subjectChoiceIsAllowed(subjectID, retaining: exam?.subjectID))
             }
         }.padding(DesignSystem.PreservedGeometry.gap28).frame(width: DesignSystem.PreservedGeometry.points480)
         .onAppear { title = exam?.title ?? ""; date = exam?.date ?? initialDate; hasTime = exam?.hasTime ?? false; subjectID = exam?.subjectID; note = exam?.note ?? "" }

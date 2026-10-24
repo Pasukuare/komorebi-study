@@ -122,6 +122,7 @@ struct RootView: View {
             visitedPages.insert(previous)
             visitedPages.insert(current)
         }
+        .onChange(of: store.openSubjects, initial: true) { if store.openSubjects { page = .subjects; store.openSubjects = false } }
         .onChange(of: store.openTimer) { if store.openTimer { page = .timer; store.openTimer = false } }
         .sheet(isPresented: Binding(get: { !store.settings.onboarded }, set: { if !$0 { store.settings.onboarded = true } })) { OnboardingView() }
         .sheet(item: Binding(get: { store.menuCompletion ? nil : store.completed }, set: { store.completed = $0 })) { session in CompletionView(session: session) }
@@ -243,6 +244,7 @@ struct SessionControls: View {
                     .font(appTheme.typography.control)
                     .frame(maxWidth: .infinity).padding(.vertical, DesignSystem.Spacing.legacy6)
             }.buttonStyle(StudyActionStyle()).disabled(store.active == nil && store.activeSubjects.isEmpty)
+                .help(store.active == nil && store.activeSubjects.isEmpty ? L10n.tr("Aggiungi o riapri una materia per iniziare") : store.actionTitle)
             if let active = store.active {
                 Button(active.isBreak ? L10n.tr("Salta pausa") : L10n.tr("Termina e salva")) {
                     if active.isBreak { store.skipBreak() } else { store.finish(fromMenu: fromMenu) }
@@ -260,8 +262,8 @@ struct TimerSetup: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy14) {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy6) {
                 Text(L10n.tr("Materia")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
-                StudyDropdown(title: L10n.tr("Materia"), options: store.activeSubjects.map { (Optional($0.id), $0.name) }, selection: Binding(get: { store.preparedSubject?.id }, set: { store.chooseSubject($0) })).frame(maxWidth: .infinity)
-                if store.subjects.isEmpty { Text(L10n.tr("Aggiungi una materia per iniziare.")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary) }
+                StudyDropdown(title: L10n.tr("Materia"), options: store.activeSubjectChoices, selection: Binding(get: { store.preparedSubject?.id }, set: { store.chooseSubject($0) })).frame(maxWidth: .infinity)
+                if store.activeSubjects.isEmpty { NoActiveSubjects() }
             }
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy6) {
                 Text(L10n.tr("Modalità")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
@@ -455,7 +457,7 @@ struct OverviewView: View {
     var openTimer: () -> Void
     var openCalendar: () -> Void
     var openThemeSettings: () -> Void
-    var upcoming: [StudyExam] { store.exams.filter { $0.date >= store.day.start } }
+    var upcoming: [StudyExam] { store.homeExams.filter { $0.date >= store.day.start } }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
@@ -465,7 +467,7 @@ struct OverviewView: View {
                         PersonalPhrase(slot: .home)
                     }
                     Spacer()
-                    HomeExamCountdown(exams: store.exams, date: store.now, streak: store.streak)
+                    HomeExamCountdown(exams: store.homeExams, date: store.now, streak: store.streak)
                         .frame(maxWidth: DesignSystem.PreservedGeometry.points280, alignment: .trailing)
                 }
                 ForEach(ThemeCampaign.available(settings: store.settings, date: store.now)) { campaign in
@@ -502,13 +504,15 @@ struct OverviewView: View {
             Text(store.active == nil ? L10n.tr("Sessione") : store.active?.subjectName ?? L10n.tr("Sessione"))
                 .font(appTheme.preservedTypography.editorTitle).fixedSize(horizontal: false, vertical: true)
             if store.active == nil {
-                StudyDropdown(title: L10n.tr("Materia"), options: store.activeSubjects.map { (Optional($0.id), $0.name) }, selection: Binding(get: { store.preparedSubject?.id }, set: { store.chooseSubject($0) }))
+                StudyDropdown(title: L10n.tr("Materia"), options: store.activeSubjectChoices, selection: Binding(get: { store.preparedSubject?.id }, set: { store.chooseSubject($0) }))
+                if store.activeSubjects.isEmpty { NoActiveSubjects() }
                 Label(store.preparedSummary, systemImage: "timer").font(appTheme.preservedTypography.callout).foregroundStyle(appTheme.palette.textSecondary)
                 HStack {
                     Button {
                         store.start(); if store.active != nil { openTimer() }
                     } label: { Label(L10n.tr("Inizia a studiare"), systemImage: "play.fill").padding(.vertical, DesignSystem.Spacing.xxs) }
                         .buttonStyle(StudyActionStyle()).disabled(store.activeSubjects.isEmpty)
+                        .help(store.activeSubjects.isEmpty ? L10n.tr("Aggiungi o riapri una materia per iniziare") : L10n.tr("Inizia a studiare"))
                     Button(L10n.tr("Configura"), action: openTimer)
                 }
             } else {
@@ -691,5 +695,23 @@ struct HomeExamCountdown: View {
                     .foregroundStyle(theme.palette.accent)
             }
         }.padding(.top, DesignSystem.Spacing.xs)
+    }
+}
+
+/// Used by Home, Timer and MenuPanel's shared TimerSetup; no duplicated eligibility filters.
+struct NoActiveSubjects: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
+    @EnvironmentObject private var store: StudyStore
+    @Environment(\.studyTheme) private var theme
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            Text(L10n.tr("Nessuna materia da completare")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+            Text(L10n.tr("Aggiungi o riapri una materia per iniziare")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+            Button(L10n.tr("Aggiungi una materia")) {
+                store.openSubjects = true
+                openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true)
+            }
+        }
     }
 }

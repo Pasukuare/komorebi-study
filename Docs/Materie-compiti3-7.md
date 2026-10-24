@@ -48,3 +48,17 @@ Verifica: 155 test Release, nessun errore, uno saltato. Inclusi 35 materie, ordi
 | Fixture preview | KomorebiApp.swift, configurePreview | dati fittizi in memoria, nessuna selezione personale |
 
 Il solo componente generico per dropdown è Components/Controls.swift, StudyDropdown. Palette e icone dei moduli sono in Components/SubjectAppearance.swift e non selezionano altre materie. Nessun ulteriore Picker di materia trovato. Il censimento è di codice; non viene presentato come apertura manuale di tutti i menu.
+
+## Compito 6
+
+Il catalogo condiviso ora conserva anche ID, lookup e opzioni pronte per avvio/consultazione. La firma è strutturata (nessuna concatenazione ambigua dei nomi). L’elenco attivo non viene filtrato nei body o all’apertura dei menu. Home, Timer e MenuPanel riusano activeSubjectChoices; comandi Studio e guardia dello store impediscono avvii senza materie attive. Nessun cambiamento al timer già attivo.
+
+Cronologia e Statistiche mostrano tutte le materie, con separatore non selezionabile «Completate». La Cronologia filtra per ID, così conserva sessioni con il vecchio nome dopo una rinomina; i nomi storici non più associati rimangono selezionabili senza collisione con «Tutte». Il Calendario non aveva un filtro per materia: non ne è stato aggiunto uno e la consultazione resta completa.
+
+Creazione esami: attive e opzione Nessuna materia, già consentita. Modifica esami: conservato anche il collegamento corrente completato/eliminato, per consentire correzioni di data/note senza assegnazioni silenziose. Modifica sessione: corrente sempre presente; alternative attive. Salvare una nota senza cambiare scelta non riscrive nemmeno subjectName. Una scelta divenuta completata in un’altra finestra viene rifiutata se diversa dall’originale.
+
+Home nasconde da Prossimi esami/countdown solo gli esami collegati a ID completati. Esami senza materia o con collegamento ormai mancante restano visibili: nessuno stato viene dedotto o cancellato. Riaprire una materia ripristina subito i suoi esami. Calendario e contatori degli esami restano invariati.
+
+Se la selezione salvata viene completata, la preferenza viene corretta verso la prima attiva senza avvio; con zero attive preparedSubject è nil, avvio disabilitato, motivo e pulsante Aggiungi una materia presenti nei componenti condivisi. Il nuovo collegamento apre la sezione Materie anche dalla barra dei menu; nessun’altra navigazione cambia.
+
+Verifica: 157 test Release, zero errori, uno saltato. Tre materie con sessione passata, scelta attuale completata, ultima attiva completata, riapertura, filtro consultazione, editor sessioni con materia completata, esami nascosti/ripristinati e countdown verificati via sorgenti condivise e test. Non sono dichiarati provati click reali o apertura manuale di tutti i popover. La scansione SQLite pre-backup considera anche gli errori di lettura come richiesta di backup, per fallire in sicurezza anziché saltare la copia.
