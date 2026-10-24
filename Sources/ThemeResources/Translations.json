@@ -513,5 +513,6 @@
   "Piano": "Plan",
   "Preparazione dal %@": "Preparation starts on %@",
   "Preparazione programmata": "Preparation scheduled",
-  "Servono %@ h al giorno dalla data di inizio. Il ritmo sarà calcolato dopo l’inizio della preparazione.": "You need %@ h per day from the start date. Your pace will be calculated once preparation begins."
+  "Servono %@ h al giorno dalla data di inizio. Il ritmo sarà calcolato dopo l’inizio della preparazione.": "You need %@ h per day from the start date. Your pace will be calculated once preparation begins.",
+  "Per unità": "By unit"
 }

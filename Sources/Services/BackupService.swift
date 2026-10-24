@@ -6,8 +6,9 @@ import SwiftData
 
 struct SessionRecord: Codable {
     var id: UUID; var start: Date; var end: Date; var duration: Double; var subjectID: UUID?; var subject: String; var mode: String; var pause: Double; var note: String; var activityData: Data? = nil
-    init(_ s: StudySession) { id = s.id; start = s.startDate; end = s.endDate; duration = s.duration; subjectID = s.subjectID; subject = s.subjectName; mode = s.timerMode; pause = s.pauseDuration; note = s.note; activityData = s.activityData }
-    var model: StudySession { let session = StudySession(id: id, start: start, end: end, duration: duration, subjectID: subjectID, subjectName: subject, mode: mode, pause: pause, note: note); session.activityData = activityData; return session }
+    var unitID: UUID? = nil; var unitTitle: String? = nil; var unitFinished: Bool? = nil
+    init(_ s: StudySession) { unitID = s.unitID; unitTitle = s.unitTitle; unitFinished = s.unitFinished; id = s.id; start = s.startDate; end = s.endDate; duration = s.duration; subjectID = s.subjectID; subject = s.subjectName; mode = s.timerMode; pause = s.pauseDuration; note = s.note; activityData = s.activityData }
+    var model: StudySession { let session = StudySession(id: id, start: start, end: end, duration: duration, subjectID: subjectID, subjectName: subject, mode: mode, pause: pause, note: note); session.activityData = activityData; session.unitID = unitID; session.unitTitle = unitTitle; session.unitFinished = unitFinished; return session }
 }
 struct SubjectRecord: Codable {
     var id: UUID; var name: String; var icon: String; var color: String; var weeklyGoal: Double
@@ -24,7 +25,7 @@ struct SubjectRecord: Codable {
         return subject
     }
 }
-struct Backup: Codable { var version = 1; var settings: UserSettings; var subjects: [SubjectRecord]; var sessions: [SessionRecord]; var exams: [ExamRecord]? = nil }
+struct Backup: Codable { var version = 1; var settings: UserSettings; var subjects: [SubjectRecord]; var sessions: [SessionRecord]; var exams: [ExamRecord]? = nil; var units: [UnitRecord]? = nil }
 @MainActor extension StudyStore {
     func export(csv: Bool) {
         let panel = NSSavePanel(); panel.title = csv ? L10n.tr("Esporta CSV") : L10n.tr("Backup JSON"); panel.prompt = L10n.tr("Salva"); panel.nameFieldStringValue = csv ? "Komorebi-sessioni.csv" : "Komorebi-backup.json"; panel.allowedContentTypes = [csv ? .commaSeparatedText : .json]
@@ -41,7 +42,7 @@ struct Backup: Codable { var version = 1; var settings: UserSettings; var subjec
                 data = ([header] + rows).joined(separator: "\r\n").data(using: .utf8)!
             } else {
                 let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]; encoder.dateEncodingStrategy = .iso8601
-                data = try encoder.encode(Backup(settings: settings, subjects: subjects.map(SubjectRecord.init), sessions: sessions.map(SessionRecord.init), exams: exams.map(ExamRecord.init)))
+                data = try encoder.encode(Backup(settings: settings, subjects: subjects.map(SubjectRecord.init), sessions: sessions.map(SessionRecord.init), exams: exams.map(ExamRecord.init), units: units.map(UnitRecord.init)))
             }
             try data.write(to: url, options: .atomic)
         } catch { self.error = L10n.errorMessage(error) }
@@ -54,6 +55,7 @@ struct Backup: Codable { var version = 1; var settings: UserSettings; var subjec
             let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
             let backup = try decoder.decode(Backup.self, from: Data(contentsOf: url))
             guard backup.version == 1, (backup.exams ?? []).allSatisfy({ !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }), backup.sessions.allSatisfy({ $0.duration.isFinite && $0.pause.isFinite && $0.duration >= 0 && $0.pause >= 0 && $0.end >= $0.start && $0.duration + $0.pause <= $0.end.timeIntervalSince($0.start) + 2 }), backup.subjects.allSatisfy({ !$0.name.isEmpty && $0.weeklyGoal.isFinite && $0.weeklyGoal >= 0 }), backup.settings.dailyGoal > 0, backup.settings.weeklyGoal > 0 else { throw CocoaError(.fileReadCorruptFile) }
+            guard (backup.units ?? []).allSatisfy({ !$0.title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty && ($0.estimatedMinutes == nil || ($0.estimatedMinutes!.isFinite && $0.estimatedMinutes! > 0)) }) else { throw CocoaError(.fileReadCorruptFile) }
             let alert = NSAlert(); alert.messageText = L10n.tr("Importa backup locale"); alert.informativeText = L10n.tr("Verranno aggiunte le sessioni e le materie mancanti. I dati esistenti saranno conservati. Le impostazioni verranno aggiornate."); alert.addButton(withTitle: L10n.tr("Importa")); alert.addButton(withTitle: L10n.tr("Annulla"))
             guard alert.runModal() == .alertFirstButtonReturn else { return }
             if backup.subjects.contains(where: { $0.completionVersion == nil }),
@@ -68,6 +70,8 @@ struct Backup: Codable { var version = 1; var settings: UserSettings; var subjec
             for s in backup.sessions where sessionIDs.insert(s.id).inserted { context.insert(s.model) }
             var examIDs = Set(exams.map(\.id))
             for exam in backup.exams ?? [] where examIDs.insert(exam.id).inserted { context.insert(exam.model) }
+            var unitIDs = Set(units.map(\.id))
+            for unit in backup.units ?? [] where unitIDs.insert(unit.id).inserted { context.insert(unit.model) }
             SubjectCompletionMigration.apply(subjects: try context.fetch(FetchDescriptor<Subject>()), sessions: try context.fetch(FetchDescriptor<StudySession>()))
             do { try context.save() } catch { context.rollback(); throw error }
             settings = backup.settings; settings.onboarded = true; refresh()
@@ -167,5 +171,34 @@ extension ColorIDMigrationBackup {
         let result = sqlite3_prepare_v2(db, "SELECT ZREQUIREDSTUDYHOURS, ZPREPARATIONSTART FROM ZSTUDYEXAM LIMIT 0", -1, &statement, nil)
         defer { sqlite3_finalize(statement) }
         return result != SQLITE_OK
+    }
+}
+
+
+struct UnitRecord: Codable {
+    var id: UUID; var subjectID: UUID; var title: String; var kind: String; var order: Int; var state: String
+    var estimatedMinutes: Double?; var firstPage: Int?; var lastPage: Int?
+    init(_ unit: StudyUnit) {
+        id = unit.id; subjectID = unit.subjectID; title = unit.title; kind = unit.kind; order = unit.order; state = unit.state
+        estimatedMinutes = unit.estimatedMinutes; firstPage = unit.firstPage; lastPage = unit.lastPage
+    }
+    var model: StudyUnit {
+        let unit = StudyUnit(subjectID:subjectID,title:title,kind:StudyUnitKind(rawValue:kind) ?? .other,order:order,estimatedMinutes:estimatedMinutes,firstPage:firstPage,lastPage:lastPage)
+        unit.id = id; unit.state = state; return unit
+    }
+}
+extension ColorIDMigrationBackup {
+    static func needsUnitsBackup(_ url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath:url.path) else { return false }
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(url.path,&db,SQLITE_OPEN_READONLY,nil) == SQLITE_OK else { if let db { sqlite3_close(db) }; return true }
+        defer { sqlite3_close(db) }
+        var statement: OpaquePointer?
+        let result = sqlite3_prepare_v2(db,"SELECT ZUNITID, ZUNITTITLE, ZUNITFINISHED FROM ZSTUDYSESSION LIMIT 0",-1,&statement,nil)
+        defer { sqlite3_finalize(statement) }
+        if result != SQLITE_OK { return true }
+        var units: OpaquePointer?
+        defer { sqlite3_finalize(units) }
+        return sqlite3_prepare_v2(db,"SELECT ZTITLE FROM ZSTUDYUNIT LIMIT 0",-1,&units,nil) != SQLITE_OK
     }
 }

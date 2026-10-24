@@ -15,7 +15,7 @@ import SwiftData
             context.insert(StudySession(id: id, start: Date(), end: Date(), duration: 0, subjectID: nil, subjectName: "Archivio precedente", mode: "Pomodoro", pause: 0))
             try context.save()
         }
-        let new = Schema([StudySession.self, Subject.self, StudyExam.self])
+        let new = Schema([StudySession.self, Subject.self, StudyExam.self, StudyUnit.self])
         let container = try ModelContainer(for: new, configurations: [ModelConfiguration(schema: new, url: url)])
         let context = ModelContext(container)
         XCTAssertEqual(try context.fetch(FetchDescriptor<StudySession>()).first?.id, id)
@@ -82,7 +82,7 @@ import SwiftData
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("Study.store")
-        let schema = Schema([StudySession.self, Subject.self, StudyExam.self])
+        let schema = Schema([StudySession.self, Subject.self, StudyExam.self, StudyUnit.self])
         let id: UUID
         do {
             let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: url)])

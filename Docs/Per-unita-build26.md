@@ -15,3 +15,13 @@
 | Backup | Sources/Services/BackupService.swift, Backup/SessionRecord/export/restore | JSON versione 1 con campi opzionali retrocompatibili e CSV. Aggiungere unità senza perdere backup precedenti. |
 
 Nessun codice modificato nel Compito 1. Nessuna nota personale trasformata in unità.
+
+## Compito 2 — dati e regole
+
+StudyUnit è una nuova entità SwiftData, collegata via UUID alla materia senza cancellazioni a cascata. Sessioni e ActiveTimer aggiungono solo campi opzionali (unitID, titolo storico e stato finale; stima snapshot nell’attivo). Backup JSON include unità opzionali e conserva collegamenti e snapshot; i backup precedenti rimangono leggibili. Backup SQLite WAL-aware `Backups/StudyUnits-<data>-<UUID>` prima dell’apertura del vecchio schema. Una migrazione sintetica dal vero schema privo delle colonne unità verifica integrità delle note e durate e idempotenza. Nessun archivio personale migrato durante le prove.
+
+Generazione numerica e per pagine pura, con massimo 10.000 elementi per operazione per evitare allocazioni accidentali. Ultimo blocco pagine accorciato al resto. Mediana per materia/tipo solo con almeno tre unità finite con tempo positivo; per pagine mediana dei minuti/pagina. Stima esplicita facoltativa prevale sulla proposta automatica. Mediane calcolate una volta per gruppo, riepiloghi in cache aggiornati da save/refresh, non dai tick o dal cursore.
+
+Default delle pause **proposti dall’utente**: frazione 1/5, minimo 5 minuti, massimo 20. La pausa usa il tempo dell’ultima tratta effettivamente studiata, così una ripresa non propone di nuovo pause per tempi già salvati. L’unità ha una sola sessione cumulativa, con intervalli delle tratte separati; i giorni senza studio non diventano tempo studiato. Finita a tempo zero modifica lo stato senza inventare una sessione. Eliminare l’unità conserva UUID e titolo nella sessione. Modificare o eliminare l’unità non interrompe il timer attivo: usa lo snapshot acquisito all’avvio.
+
+Verifica Compito 2: suite Release 179 test, uno saltato, zero errori; poi 5 test mirati unità/migrazione superati. I fixture di migrazione dei vecchi test isolano il proprio cambiamento includendo la nuova tabella vuota. Nuovi test: 20 lezioni, 7 blocchi pagine (ultimo 91–100), pause 8/5/20 minuti, mediana con soglia 3, salvataggio cumulativo/ripresa/eliminazione, preferenze legacy e migrazione SQLite protetta. Nessuna prova manuale dell’interfaccia.

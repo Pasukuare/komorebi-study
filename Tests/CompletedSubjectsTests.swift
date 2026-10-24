@@ -78,7 +78,7 @@ extension CompletedSubjectsTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let url = folder.appendingPathComponent("Study.store"), id = UUID()
         do {
-            let schema = Schema([CompletionV20.Subject.self, StudySession.self, StudyExam.self])
+            let schema = Schema([CompletionV20.Subject.self, StudySession.self, StudyExam.self, StudyUnit.self])
             let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: url)])
             let context = ModelContext(container)
             context.insert(CompletionV20.Subject(id: id))

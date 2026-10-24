@@ -26,6 +26,13 @@ import AppKit
     private(set) var projections: [UUID: StudyProjection] = [:]
     private var projectionCacheKey: ProjectionCacheKey?
     private(set) var projectionRevision = 0
+    @Published var units: [StudyUnit] = []
+    @Published var selectedUnitID: UUID?
+    private(set) var unitsBySubject: [UUID: [StudyUnit]] = [:]
+    private(set) var unitSeconds: [UUID: Double] = [:]
+    private(set) var unitEstimates: [UUID: Double] = [:]
+    private var unitCacheSignature = ""
+    private(set) var unitCacheRevision = 0
     let audio = AmbientAudio()
     let container: ModelContainer
     let context: ModelContext
@@ -201,7 +208,7 @@ import AppKit
     init(inMemory: Bool = false, defaults: UserDefaults = .standard, archiveURL: URL? = nil) throws {
         self.defaults = defaults
         systemIntegration = !inMemory && archiveURL == nil
-        let schema = Schema([StudySession.self, Subject.self, StudyExam.self])
+        let schema = Schema([StudySession.self, Subject.self, StudyExam.self, StudyUnit.self])
         let configuration: ModelConfiguration
         if inMemory { configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true) }
         else if let archiveURL { configuration = ModelConfiguration(schema: schema, url: archiveURL) }
@@ -218,6 +225,9 @@ import AppKit
         }
         if !inMemory, ColorIDMigrationBackup.needsProjectionBackup(configuration.url) {
             try ColorIDMigrationBackup.create(archiveURL: configuration.url, preferences: defaults.dictionaryRepresentation(), label: "Projection")
+        }
+        if !inMemory, ColorIDMigrationBackup.needsUnitsBackup(configuration.url) {
+            try ColorIDMigrationBackup.create(archiveURL: configuration.url, preferences: defaults.dictionaryRepresentation(), label: "StudyUnits")
         }
         container = try ModelContainer(for: schema, configurations: [configuration])
         context = ModelContext(container)
@@ -291,6 +301,8 @@ import AppKit
             sessions = try context.fetch(FetchDescriptor<StudySession>(sortBy: [SortDescriptor(\.startDate, order: .reverse)]))
             exams = try context.fetch(FetchDescriptor<StudyExam>(sortBy: [SortDescriptor(\.date)]))
             subjects = try context.fetch(FetchDescriptor<Subject>(sortBy: [SortDescriptor(\.name)]))
+            units = try context.fetch(FetchDescriptor<StudyUnit>(sortBy: [SortDescriptor(\.order)]))
+            rebuildUnitCache()
             refreshProjections()
         } catch { self.error = L10n.errorMessage(error) }
     }
@@ -302,7 +314,7 @@ import AppKit
     }
     var preparedMode: TimerMode { nextMode ?? settings.preferredMode }
     var preparedTarget: Double? {
-        preparedMode == .stopwatch ? nil : min(86400, max(60, (preparedMode == .pomodoro ? settings.pomodoroDuration : settings.customMinutes) * 60))
+        (preparedMode == .stopwatch || preparedMode == .unit) ? nil : min(86400, max(60, (preparedMode == .pomodoro ? settings.pomodoroDuration : settings.customMinutes) * 60))
     }
     var preparedSummary: String {
         preparedMode.displayName + (preparedTarget.map { " · " + durationText($0) } ?? L10n.tr(" · senza limite"))
@@ -316,8 +328,16 @@ import AppKit
         settings.lastSubject = subject.id
         let mode = preparedMode
         let target = preparedTarget
+        let unit = mode == .unit ? preparedUnit : nil
+        guard mode != .unit || unit != nil else { error = L10n.tr("Aggiungi un’unità prima di iniziare."); return }
+        if let unit {
+            let previous = unit.state
+            unit.state = StudyUnitState.inProgress.rawValue
+            guard save() else { unit.state = previous; return }
+        }
         nextMode = nil; nextSubject = nil; statusMessage = nil
         active = ActiveTimer(start: Date(), target: target, subjectID: subject.id, subjectName: subject.name, mode: mode)
+        active?.unitID = unit?.id; active?.unitTitle = unit?.title; active?.unitEstimate = unit.flatMap { unitEstimates[$0.id] }
         now = Date(); persistActive(); scheduleNotification()
     }
     func toggle() {
@@ -337,6 +357,7 @@ import AppKit
     }
     func finish(natural: Bool = false, at suppliedEnd: Date? = nil, fromMenu: Bool = false) {
         guard let a = active else { return }
+        if a.mode == .unit && !a.isBreak { finishUnit(finished: false, at: suppliedEnd ?? Date()); return }
         menuCompletion = fromMenu
         let finishTime = suppliedEnd ?? Date()
         guard finishTime >= a.start, finishTime <= Date() else { error = L10n.tr("La fine deve essere compresa tra inizio e adesso."); return }
@@ -577,5 +598,97 @@ extension SavedStudyTiming {
             let next = calendar.date(byAdding: .day, value: 1, to: day)!
             return ProjectionDailyHours(date: day, hours: contribution(in: DateInterval(start: day,end: next)) / 3600)
         }
+    }
+}
+
+
+@MainActor extension StudyStore {
+    var preparedUnit: StudyUnit? {
+        guard let subject = preparedSubject else { return nil }
+        let choices = (unitsBySubject[subject.id] ?? []).filter { $0.unitState != .finished }
+        return choices.first { $0.id == selectedUnitID } ?? choices.first
+    }
+    var canStart: Bool { !activeSubjects.isEmpty && (preparedMode != .unit || preparedUnit != nil) }
+    func rebuildUnitCache() {
+        // This path runs on persisted data changes, never on clock ticks or hover.
+        let signature = units.map { "\($0.id)|\($0.subjectID)|\($0.title)|\($0.kind)|\($0.order)|\($0.state)|\($0.estimatedMinutes ?? -1)|\($0.firstPage ?? -1)|\($0.lastPage ?? -1)" }.joined(separator:";")
+            + sessions.map { "\($0.id)|\($0.unitID?.uuidString ?? "")|\($0.duration)" }.joined(separator:";")
+        guard signature != unitCacheSignature else { return }
+        unitCacheSignature = signature; unitCacheRevision += 1
+        unitsBySubject = Dictionary(grouping: units.sorted { $0.order == $1.order ? $0.id.uuidString < $1.id.uuidString : $0.order < $1.order }, by: \.subjectID)
+        unitSeconds = sessions.reduce(into: [:]) { if let id = $1.unitID { $0[id,default:0] += $1.duration } }
+        var estimates: [UUID:Double] = [:]
+        for list in unitsBySubject.values {
+            let groups = Dictionary(grouping:list.filter { $0.unitState == .finished },by: \.kind)
+            // Build each median once per subject/type, not once per target unit.
+            var medians: [String:Double] = [:]
+            for (kind,finished) in groups {
+                let samples = finished.compactMap { item -> UnitRules.Sample? in
+                    guard let seconds = unitSeconds[item.id], seconds > 0 else { return nil }
+                    return .init(minutes:seconds/60,pages:item.pageCount)
+                }
+                medians[kind] = UnitRules.estimate(samples:samples,pageCount:kind == StudyUnitKind.pages.rawValue ? 1 : nil)
+            }
+            for unit in list {
+                if let manual = unit.estimatedMinutes, manual.isFinite, manual > 0 { estimates[unit.id] = manual; continue }
+                if unit.unitKind == .pages {
+                    if let pages = unit.pageCount, let rate = medians[unit.kind] { estimates[unit.id] = rate * Double(pages) }
+                } else { estimates[unit.id] = medians[unit.kind] }
+            }
+        }
+        unitEstimates = estimates
+    }
+    func addUnits(subject: Subject, seeds: [UnitSeed], kind: StudyUnitKind) {
+        let first = (unitsBySubject[subject.id]?.map(\.order).max() ?? -1)+1
+        for (i,seed) in seeds.enumerated() { context.insert(StudyUnit(subjectID:subject.id,title:seed.title,kind:kind,order:first+i,firstPage:seed.firstPage,lastPage:seed.lastPage)) }
+        if !save() { context.rollback(); refresh() }
+    }
+    func deleteUnit(_ unit: StudyUnit) {
+        // Session snapshots deliberately survive both deletion and later recreation.
+        context.delete(unit)
+        if !save() { context.rollback(); refresh() }
+    }
+    func moveUnit(_ unit: StudyUnit, by offset: Int) {
+        guard let list = unitsBySubject[unit.subjectID], let i = list.firstIndex(where: { $0.id == unit.id }), list.indices.contains(i+offset) else { return }
+        var reordered = list; reordered.swapAt(i,i+offset)
+        for (order,item) in reordered.enumerated() { item.order = order }
+        if !save() { context.rollback(); refresh() }
+    }
+    /// Saves each interrupted segment into the unit's one historical session.
+    /// Measured spans preserve day attribution even when resuming days later.
+    func finishUnit(finished: Bool, at end: Date = Date()) {
+        guard let a = active, a.mode == .unit, !a.isBreak, let unitID = a.unitID,
+              end >= a.start, end <= Date() else { return }
+        let spans = a.activity(until:end) ?? []
+        let seconds = spans.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }
+        let unit = units.first { $0.id == unitID }
+        let existing = sessions.first { $0.unitID == unitID }
+        // Finishing a genuinely zero-time unit is allowed, but creates no fake study time.
+        if seconds > 0 {
+            let session = existing ?? StudySession(start:a.start,end:end,duration:0,subjectID:a.subjectID,subjectName:a.subjectName,mode:TimerMode.unit.rawValue,pause:0)
+            var oldSpans = session.activityData.flatMap { try? JSONDecoder().decode([StudyInterval].self,from:$0) } ?? []
+            if existing != nil && session.activityData == nil {
+                // Manually edited timing uses the same per-day proportional allocation.
+                let timing = savedTiming(for:session)
+                oldSpans = timing.projectionDays(from:session.startDate,through:session.endDate,calendar:.current).map {
+                    StudyInterval(start:max($0.date,session.startDate),end:max($0.date,session.startDate).addingTimeInterval($0.hours*3600))
+                }
+            }
+            session.startDate = min(session.startDate,a.start); session.endDate = max(session.endDate,end)
+            session.duration += seconds
+            session.pauseDuration = max(0,session.endDate.timeIntervalSince(session.startDate)-session.duration)
+            session.unitID = unitID; session.unitTitle = a.unitTitle ?? unit?.title; session.unitFinished = finished
+            session.activityData = try? JSONEncoder().encode(oldSpans + spans)
+            if existing == nil { context.insert(session) }
+        } else if let existing { existing.unitFinished = finished }
+        unit?.state = finished ? StudyUnitState.finished.rawValue : StudyUnitState.inProgress.rawValue
+        guard save() else { context.rollback(); refresh(); active?.pause(at:Date()); persistActive(); return }
+        completed = nil; active = nil; selectedUnitID = finished ? nil : unitID
+        nextSubject = a.subjectID; nextMode = .unit
+        if finished {
+            let minutes = UnitRules.breakMinutes(studiedMinutes:seconds/60,fraction:settings.unitBreakFraction ?? 0.2,minimum:settings.unitBreakMinimum ?? 5,maximum:settings.unitBreakMaximum ?? 20)
+            active = ActiveTimer(start:Date(),pausedAt:Date(),target:minutes*60,subjectID:a.subjectID,subjectName:a.subjectName,mode:.unit,isBreak:true)
+        }
+        persistActive(); scheduleNotification()
     }
 }

@@ -29,7 +29,7 @@ enum SubjectColorID {
 }
 
 enum TimerMode: String, Codable, CaseIterable, Identifiable {
-    case pomodoro = "Pomodoro", stopwatch = "Cronometro", custom = "Personalizzato"
+    case pomodoro = "Pomodoro", stopwatch = "Cronometro", custom = "Personalizzato", unit = "Per unità"
     var id: String { rawValue }
 }
 @Model final class Subject {
@@ -64,6 +64,9 @@ enum TimerMode: String, Codable, CaseIterable, Identifiable {
     var timerMode: String
     var pauseDuration: Double
     var note: String
+    var unitID: UUID? = nil
+    var unitTitle: String? = nil
+    var unitFinished: Bool? = nil
     var activityData: Data? = nil
     init(id: UUID = UUID(), start: Date, end: Date, duration: Double, subjectID: UUID?, subjectName: String, mode: String, pause: Double, note: String = "") {
         self.id = id; startDate = start; endDate = end; self.duration = duration; self.subjectID = subjectID; self.subjectName = subjectName; timerMode = mode; pauseDuration = pause; self.note = note
@@ -102,6 +105,9 @@ enum HistorySubjectSelection: Hashable {
     }
 }
 struct UserSettings: Codable, Equatable {
+    var unitBreakFraction: Double?
+    var unitBreakMinimum: Double?
+    var unitBreakMaximum: Double?
     var completedSubjectsExpanded: Bool?
     var personalPhrases: [String: String]?
     func personalPhrase(for slot: PersonalPhraseSlot) -> String? {
@@ -140,6 +146,9 @@ struct UserSettings: Codable, Equatable {
     var showsSidebar: Bool { sidebarIsVisible ?? true }
 
     mutating func sanitize() {
+        if let x = unitBreakFraction { unitBreakFraction = x.isFinite && x > 0 ? min(1, max(0.01, x)) : 0.2 }
+        if let x = unitBreakMinimum { unitBreakMinimum = x.isFinite ? min(180, max(1, x)) : 5 }
+        if let x = unitBreakMaximum { unitBreakMaximum = x.isFinite ? min(180, max(unitBreakMinimum ?? 5, x)) : 20 }
         dailyGoal = dailyGoal.isFinite && dailyGoal > 0 ? min(24, max(0.25, dailyGoal)) : 3.0
         weeklyGoal = weeklyGoal.isFinite && weeklyGoal > 0 ? min(168, max(0.25, weeklyGoal)) : 15.0
         pomodoroDuration = pomodoroDuration.isFinite && pomodoroDuration > 0 ? min(600, max(1, pomodoroDuration)) : 25.0
@@ -170,6 +179,9 @@ struct ActiveTimer: Codable {
     var subjectID: UUID?
     var subjectName: String
     var mode: TimerMode
+    var unitID: UUID? = nil
+    var unitTitle: String? = nil
+    var unitEstimate: Double? = nil
     var isBreak = false
     var intervals: [StudyInterval]? = []
     var segmentStart: Date?
@@ -430,5 +442,89 @@ enum ProjectionTargetInput {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")
         guard let value = Double(cleaned), value.isFinite, value > 0 else { return nil }
         return value
+    }
+}
+
+
+/// Unit identities are independent of sessions: deleting a unit never cascades to history.
+enum StudyUnitKind: String, CaseIterable, Codable, Identifiable {
+    case lesson, chapter, pages, exercises, video, other
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .lesson: return L10n.tr("Lezione")
+        case .chapter: return L10n.tr("Capitolo")
+        case .pages: return L10n.tr("Pagine")
+        case .exercises: return L10n.tr("Esercizi")
+        case .video: return L10n.tr("Video")
+        case .other: return L10n.tr("Altro")
+        }
+    }
+}
+enum StudyUnitState: String, CaseIterable, Codable, Identifiable {
+    case todo, inProgress, finished
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .todo: return L10n.tr("Da fare")
+        case .inProgress: return L10n.tr("In corso")
+        case .finished: return L10n.tr("Finita")
+        }
+    }
+}
+@Model final class StudyUnit {
+    @Attribute(.unique) var id: UUID
+    var subjectID: UUID
+    var title: String
+    var kind: String
+    var order: Int
+    var state: String
+    var estimatedMinutes: Double?
+    var firstPage: Int?
+    var lastPage: Int?
+    init(subjectID: UUID, title: String, kind: StudyUnitKind = .lesson, order: Int = 0, estimatedMinutes: Double? = nil, firstPage: Int? = nil, lastPage: Int? = nil) {
+        id = UUID(); self.subjectID = subjectID; self.title = title; self.kind = kind.rawValue; self.order = order
+        state = StudyUnitState.todo.rawValue; self.estimatedMinutes = estimatedMinutes; self.firstPage = firstPage; self.lastPage = lastPage
+    }
+    var unitKind: StudyUnitKind { StudyUnitKind(rawValue: kind) ?? .other }
+    var unitState: StudyUnitState { StudyUnitState(rawValue: state) ?? .todo }
+    var pageCount: Int? { guard let firstPage, let lastPage, firstPage > 0, lastPage >= firstPage else { return nil }; return lastPage - firstPage + 1 }
+}
+struct UnitSeed: Equatable {
+    var title: String; var firstPage: Int? = nil; var lastPage: Int? = nil
+}
+enum UnitRules {
+    // Bounds prevent accidental multi-million-item allocations in a quick-create form.
+    static func numbered(from: Int, through: Int, prefix: String) -> [UnitSeed] {
+        guard from >= 0, through >= from, through - from < 10_000 else { return [] }
+        return (from...through).map { UnitSeed(title: prefix + String($0)) }
+    }
+    static func pages(from: Int, through: Int, block: Int, prefix: String) -> [UnitSeed] {
+        guard from > 0, through >= from, through < Int.max, block > 0, (through-from)/block < 10_000 else { return [] }
+        var result: [UnitSeed] = [], start = from
+        while start <= through {
+            let end = start + min(block-1, through-start)
+            result.append(UnitSeed(title: prefix + "\(start)–\(end)", firstPage: start, lastPage: end))
+            start = end + 1
+        }
+        return result
+    }
+    static func breakMinutes(studiedMinutes: Double, fraction: Double = 0.2, minimum: Double = 5, maximum: Double = 20) -> Double {
+        let lower = minimum.isFinite ? max(1, minimum) : 5
+        let upper = maximum.isFinite ? max(lower, maximum) : max(lower,20)
+        let ratio = fraction.isFinite && fraction > 0 ? fraction : 0.2
+        return min(upper, max(lower, (studiedMinutes.isFinite ? max(0,studiedMinutes) : 0) * ratio))
+    }
+    struct Sample { let minutes: Double; let pages: Int? }
+    static func estimate(samples: [Sample], pageCount: Int? = nil) -> Double? {
+        let valid = samples.compactMap { sample -> Double? in
+            guard sample.minutes.isFinite, sample.minutes > 0 else { return nil }
+            if pageCount != nil { guard let pages = sample.pages, pages > 0 else { return nil }; return sample.minutes/Double(pages) }
+            return sample.minutes
+        }.sorted()
+        guard valid.count >= 3 else { return nil }
+        let middle = valid.count/2
+        let median = valid.count.isMultiple(of:2) ? (valid[middle-1]+valid[middle])/2 : valid[middle]
+        return median * Double(pageCount ?? 1)
     }
 }
