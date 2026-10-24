@@ -35,3 +35,15 @@ ProjectionCalculator è una funzione pura su ore giornaliere e date, indipendent
 Il caso richiesto produce 20h fatte, 2h/giorno, 27 giorni, 74h previste, 130/27 = 4,8148h/giorno necessarie, 76h di ritardo, indietro con obiettivo giornaliero 6h.
 
 Lo store ricostruisce risultati e punti solo se cambiano i dati rilevanti di sessioni/esami, ore/data iniziale, materie attive, obiettivo giornaliero, giorno o fuso orario. Nessun calcolo durante hover, apertura menu, tick del timer o ridisegno UI. Le letture del risultato sono lookup in cache. Le aggregazioni giornaliere sono condivise tra esami della stessa materia. Le ore non vengono ripartite artificialmente tra esami diversi della stessa materia: ciascuno usa il proprio intervallo di preparazione.
+
+## Compito 3 — card Home
+
+Nuova card sotto Obiettivo settimanale, stesso bordo/raggio/superficie e titolo serif delle altre card. Nessun cambiamento alle card precedenti. Esame iniziale = più vicino con materia attiva; menu condiviso se più di uno, scelta conservata finché eleggibile. Esami non collegati o con materia mancante sono esclusi perché le ore non sono attribuibili; rimangono nel Calendario.
+
+Senza ore: domanda sul nome della materia, campo vuoto, data iniziale esplicitamente modificabile (oggi), Imposta. Nessun valore di ore precompilato. Matita per riaprire l’editor; modificare le ore non azzera la data iniziale. Input italiano/inglese, validazione di numero positivo finito, ripristino dei soli campi modificati se il salvataggio fallisce. Le cifre originali non vengono arrotondate nell’editor.
+
+Con ore: frase principale, Fatte/A questo ritmo/Servono, stato e ritmo richiesto con confronto al ritmo attuale. Ambra/terracotta per ritardo e limite di ritmo, salvia per in linea/raggiunto; nessun rosso. Testo esplicito: solo sessioni salvate. Esame oggi senza giorni disponibili mostra il residuo e nessun ritmo inventato. Nessun esame eleggibile: messaggio e pulsante Apri Calendario.
+
+La card Proiezione esclude il proprio spotlight, lasciando immutati gli stili delle altre card: il movimento sul futuro grafico non ridisegnerà un gradiente grande quanto la card. I controlli mantengono i loro hover/focus condivisi.
+
+Verifica Compito 3: 171 test Release, nessun errore, uno saltato. Coperti parsing vuoto/zero/non finito/virgola, dietro→in linea→raggiunto con sessioni salvate, ordine 19/27 giorni, materia completata esclusa/riaperta, 1.000 letture senza ricostruire la cache. Catture native fuori schermo della card numerica e della richiesta vuota nelle quattro combinazioni di tema/modalità. Non sono prove di click, tastiera o VoiceOver reali.

@@ -488,6 +488,7 @@ struct OverviewView: View {
                     }
                     LiveStudyTime { _ in GoalBar(title: L10n.tr("Questa settimana"), value: store.weeklyGoalProgress, goal: store.settings.weeklyGoal * 3600) }
                 }
+                ProjectionCard(openCalendar: openCalendar)
                 ViewThatFits(in: .horizontal) {
                     EqualHeightCardRow(spacing: DesignSystem.Spacing.lg) {
                         upcomingCard.frame(minWidth: DesignSystem.PreservedGeometry.points280)

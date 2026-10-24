@@ -306,3 +306,146 @@ struct StatisticsStudyChart: View {
         }
     }
 }
+
+
+struct ProjectionCard: View {
+    @ObservedObject private var language = AppLocalization.shared
+    @EnvironmentObject private var store: StudyStore
+    @Environment(\.studyTheme) private var theme
+    var openCalendar: () -> Void
+    @State private var selectedID: UUID?
+    @State private var editing = false
+    init(openCalendar: @escaping () -> Void, initialExamID: UUID? = nil) {
+        self.openCalendar = openCalendar; _selectedID = State(initialValue: initialExamID)
+    }
+    private var exam: StudyExam? { store.projectionExams.first { $0.id == selectedID } ?? store.projectionExams.first }
+    var body: some View {
+        // Static card chrome: moving over the chart never repaints a card-sized spotlight.
+        Card(hoverEnabled: false) {
+            HStack {
+                Text(L10n.tr("Proiezione")).font(theme.typography.heading)
+                Spacer()
+                if let exam, store.projections[exam.id] != nil {
+                    Button { editing.toggle() } label: { Image(systemName: "pencil") }
+                        .help(L10n.tr("Modifica ore necessarie")).accessibilityLabel(L10n.tr("Modifica ore necessarie"))
+                }
+            }
+            if let exam {
+                if store.projectionExams.count > 1 {
+                    StudyDropdown(title: L10n.tr("Esame"), options: store.projectionExams.map { (Optional($0.id), store.examDisplayTitle($0)) },
+                        selection: Binding(get: { self.exam?.id }, set: { selectedID = $0; editing = false }))
+                } else {
+                    Text(verbatim: store.examDisplayTitle(exam)).font(theme.typography.small).foregroundStyle(theme.palette.textSecondary)
+                }
+                if editing || store.projections[exam.id] == nil {
+                    ProjectionTargetEditor(exam: exam, cancel: store.projections[exam.id] == nil ? nil : { editing = false }, saved: { editing = false }).id(exam.id)
+                } else if let result = store.projections[exam.id] {
+                    ProjectionSummary(result: result, dailyGoal: store.settings.dailyGoal)
+                }
+            } else {
+                Text(L10n.tr("Aggiungi un esame per vedere la proiezione")).foregroundStyle(theme.palette.textSecondary)
+                Button(L10n.tr("Apri Calendario"), action: openCalendar)
+            }
+        }
+        .onChange(of: store.projectionExams.map(\.id)) {
+            if let selectedID, !store.projectionExams.contains(where: { $0.id == selectedID }) { self.selectedID = nil; editing = false }
+        }
+    }
+}
+
+struct ProjectionTargetEditor: View {
+    @ObservedObject private var language = AppLocalization.shared
+    @EnvironmentObject private var store: StudyStore
+    @Environment(\.studyTheme) private var theme
+    let exam: StudyExam
+    var cancel: (() -> Void)?
+    let saved: () -> Void
+    @State private var hoursText: String
+    @State private var start: Date
+    @State private var failed = false
+    init(exam: StudyExam, cancel: (() -> Void)? = nil, saved: @escaping () -> Void) {
+        self.exam = exam; self.cancel = cancel; self.saved = saved
+        _hoursText = State(initialValue: exam.requiredStudyHours.map { String($0).replacingOccurrences(of: ".", with: L10n.locale.decimalSeparator ?? ".") } ?? "")
+        _start = State(initialValue: exam.preparationStart ?? Calendar.current.startOfDay(for: Date()))
+    }
+    private var hours: Double? { ProjectionTargetInput.hours(hoursText) }
+    private var latestStart: Date { min(Calendar.current.startOfDay(for: store.now), Calendar.current.startOfDay(for: exam.date)) }
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            let name = exam.subjectID.flatMap { store.subjectsByID[$0]?.name } ?? exam.title
+            Text(L10n.tr("Quante ore ti servono per arrivare pronto a %@?", name)).font(theme.typography.heading)
+            StudyTextEntry(L10n.tr("Ore necessarie"), text: $hoursText).textFieldStyle(StudyTextFieldStyle())
+            DatePicker(L10n.tr("Data di inizio preparazione"), selection: $start, in: ...latestStart, displayedComponents: .date)
+            if !hoursText.isEmpty && hours == nil {
+                Text(L10n.tr("Inserisci un numero di ore maggiore di zero")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+            }
+            if failed { Text(L10n.tr("Impossibile salvare. Riprova.")).foregroundStyle(theme.appearance.destructiveInk) }
+            HStack {
+                if let cancel { Button(L10n.tr("Annulla"), action: cancel) }
+                Button(L10n.tr("Imposta")) {
+                    guard let hours, start <= latestStart else { return }
+                    let oldHours = exam.requiredStudyHours, oldStart = exam.preparationStart
+                    exam.requiredStudyHours = hours; exam.preparationStart = Calendar.current.startOfDay(for: start)
+                    if store.save() { saved() }
+                    else { exam.requiredStudyHours = oldHours; exam.preparationStart = oldStart; failed = true }
+                }.buttonStyle(ResponsiveButtonStyle(prominent: true)).disabled(hours == nil || start > latestStart)
+            }
+        }
+    }
+}
+
+enum ProjectionText {
+    static func number(_ value: Double) -> String { value.formatted(.number.precision(.fractionLength(0...1)).locale(L10n.locale)) }
+    static func rate(_ value: Double) -> String { value.formatted(.number.precision(.fractionLength(1)).locale(L10n.locale)) }
+    static func headline(_ r: StudyProjection) -> String {
+        switch r.status {
+        case .reached: return L10n.tr("Obiettivo ore raggiunto: %@ h su %@ h", number(r.doneHours), number(r.requiredHours))
+        case .onTrack: return L10n.tr("Sei in linea: arrivi con %@ h su %@ h", number(r.finalHours), number(r.requiredHours))
+        case .examToday: return L10n.tr("Esame oggi: %@ h su %@ h", number(r.doneHours), number(r.requiredHours))
+        default: return L10n.tr("A questo ritmo arrivi all’esame con %@ h su %@ h", number(r.finalHours), number(r.requiredHours))
+        }
+    }
+    static func detail(_ r: StudyProjection, dailyGoal: Double) -> String {
+        guard let needed = r.necessaryPace else { return L10n.tr("L’esame è oggi: restano %@ h e nessun altro giorno di preparazione", number(max(0,r.requiredHours-r.doneHours))) }
+        if r.status == .reached { return L10n.tr("Ore necessarie già raggiunte") }
+        if needed > dailyGoal { return L10n.tr("Il tuo obiettivo di %@ h al giorno non basta: ne servono %@", number(dailyGoal), rate(needed)) }
+        if needed > 12 { return L10n.tr("Servono %@ h al giorno, oltre 12 h di studio", rate(needed)) }
+        return L10n.tr("Servono %@ h al giorno da oggi (ora ne fai %@)", rate(needed), rate(r.currentPace))
+    }
+}
+struct ProjectionSummary: View {
+    @ObservedObject private var language = AppLocalization.shared
+    @Environment(\.studyTheme) private var theme
+    let result: StudyProjection
+    let dailyGoal: Double
+    private var positive: Bool { result.status == .reached || result.status == .onTrack }
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            Text(ProjectionText.headline(result)).font(theme.typography.title).fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                metric(L10n.tr("Fatte"), value: ProjectionText.number(result.doneHours) + " h")
+                metric(L10n.tr("A questo ritmo"), value: ProjectionText.number(result.finalHours) + " h")
+                metric(L10n.tr("Servono"), value: result.necessaryPace.map { ProjectionText.rate($0) + L10n.tr(" h/giorno") } ?? "—")
+            }
+            Text(status).font(theme.typography.small).foregroundStyle(positive ? theme.subjectColor(SubjectColorID.defaultID) : theme.appearance.amberInk)
+            Text(ProjectionText.detail(result, dailyGoal: dailyGoal)).foregroundStyle(theme.palette.textSecondary).fixedSize(horizontal: false, vertical: true)
+            Text(L10n.tr("Solo sessioni salvate. La sessione in corso non è inclusa.")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+        }
+    }
+    private var status: String {
+        switch result.status {
+        case .reached: return L10n.tr("Obiettivo raggiunto")
+        case .onTrack: return L10n.tr("In linea")
+        case .unsustainable: return L10n.tr("Ritmo non sostenibile")
+        case .examToday: return L10n.tr("Esame oggi")
+        case .past: return L10n.tr("Esame passato")
+        case .behind: return L10n.tr("Indietro di %@ h sulla proiezione", ProjectionText.number(result.shortfall))
+        }
+    }
+    private func metric(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            Text(title).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+            Text(value).font(theme.typography.heading).monospacedDigit().lineLimit(2)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}

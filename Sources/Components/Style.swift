@@ -541,14 +541,16 @@ struct Card<Content: View>: View {
     @Environment(\.studyTheme) private var appTheme
     var stretches = false
     var identity: AnyHashable? = nil
+    var hoverEnabled = true
     @ViewBuilder var content: Content
-    var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) { content }
+    @ViewBuilder var body: some View {
+        let surface = VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) { content }
             .frame(maxWidth: .infinity, maxHeight: stretches ? .infinity : nil, alignment: .topLeading)
             .padding(DesignSystem.Spacing.xl)
             .background(appTheme.palette.surface, in: RoundedRectangle(cornerRadius: DesignSystem.Radius.card))
             .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.card).stroke(appTheme.palette.border.opacity(appTheme.appearance.opacity0_35)).allowsHitTesting(false))
-            .interactiveHover(cornerRadius: DesignSystem.Radius.card, decorative: true, identity: identity)
+        if hoverEnabled { surface.interactiveHover(cornerRadius: DesignSystem.Radius.card, decorative: true, identity: identity) }
+        else { surface }
     }
 }
 struct Metric: View {

@@ -417,3 +417,13 @@ enum ProjectionCalculator {
             studiedDays: buckets.values.filter { $0 > 0 }.count, actualPoints: points)
     }
 }
+
+
+/// Accepts Italian/English decimal separators without inventing a default target.
+enum ProjectionTargetInput {
+    static func hours(_ text: String) -> Double? {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(cleaned), value.isFinite, value > 0 else { return nil }
+        return value
+    }
+}
