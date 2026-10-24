@@ -235,6 +235,8 @@ enum ExamKind: String, CaseIterable, Identifiable {
     var hasTime: Bool
     var subjectID: UUID?
     var note: String
+    var requiredStudyHours: Double? = nil
+    var preparationStart: Date? = nil
     var examKind: String? = nil
     var examKindDetail: String? = nil
     init(title: String, date: Date, hasTime: Bool = false, subjectID: UUID? = nil, note: String = "") {
@@ -261,10 +263,11 @@ extension StudyExam {
 }
 struct ExamRecord: Codable {
     var id: UUID; var title: String; var date: Date; var hasTime: Bool; var subjectID: UUID?; var note: String
+    var requiredStudyHours: Double? = nil; var preparationStart: Date? = nil
     var examKind: String? = nil; var examKindDetail: String? = nil
-    init(_ exam: StudyExam) { examKind = exam.examKind; examKindDetail = exam.examKindDetail; id = exam.id; title = exam.title; date = exam.date; hasTime = exam.hasTime; subjectID = exam.subjectID; note = exam.note }
+    init(_ exam: StudyExam) { requiredStudyHours = exam.requiredStudyHours; preparationStart = exam.preparationStart; examKind = exam.examKind; examKindDetail = exam.examKindDetail; id = exam.id; title = exam.title; date = exam.date; hasTime = exam.hasTime; subjectID = exam.subjectID; note = exam.note }
     var model: StudyExam {
-        let exam = StudyExam(title: title, date: date, hasTime: hasTime, subjectID: subjectID, note: note); exam.id = id; exam.examKind = examKind; exam.examKindDetail = examKindDetail; return exam
+        let exam = StudyExam(title: title, date: date, hasTime: hasTime, subjectID: subjectID, note: note); exam.id = id; exam.requiredStudyHours = requiredStudyHours; exam.preparationStart = preparationStart; exam.examKind = examKind; exam.examKindDetail = examKindDetail; return exam
     }
 }
 
@@ -346,4 +349,71 @@ enum L10n {
 extension TimerMode {
     var displayName: String { L10n.tr(rawValue) }
     static func displayName(for rawValue: String) -> String { TimerMode(rawValue: rawValue)?.displayName ?? rawValue }
+}
+
+
+/// Shared calendar-day rule for countdown and projection; daylight-saving changes are irrelevant.
+enum ExamCalendarDays {
+    static func remaining(until exam: Date, from today: Date, calendar: Calendar = .current) -> Int {
+        calendar.dateComponents([.day], from: calendar.startOfDay(for: today), to: calendar.startOfDay(for: exam)).day ?? 0
+    }
+}
+struct ProjectionDailyHours: Equatable { let date: Date; let hours: Double }
+struct ProjectionPoint: Equatable, Identifiable {
+    let date: Date; let hours: Double
+    var id: Date { date }
+}
+enum ProjectionStatus: String { case reached, onTrack, behind, unsustainable, examToday, past }
+struct StudyProjection: Equatable {
+    let requiredHours: Double; let doneHours: Double; let currentPace: Double
+    let finalHours: Double; let necessaryPace: Double?; let shortfall: Double
+    let daysRemaining: Int; let status: ProjectionStatus; let preparationStart: Date; let asOf: Date; let examDate: Date
+    let studiedDays: Int; let actualPoints: [ProjectionPoint]
+}
+/// Pure calculation, independent of SwiftData, UI, preferences and the running timer.
+enum ProjectionCalculator {
+    static func calculate(requiredHours: Double?, preparationStart: Date?, examDate: Date,
+                          now: Date, dailyGoal: Double, dailyHours: [ProjectionDailyHours], calendar: Calendar = .current) -> StudyProjection? {
+        guard let target = requiredHours, target.isFinite, target > 0, let preparationStart else { return nil }
+        let start = calendar.startOfDay(for: preparationStart), today = calendar.startOfDay(for: now)
+        guard start <= today else { return nil }
+        let rawDays = ExamCalendarDays.remaining(until: examDate, from: now, calendar: calendar)
+        let days = max(0, rawDays)
+        let elapsed = max(0, calendar.dateComponents([.day], from: start, to: today).day ?? 0)
+        let divisor = min(7, max(1, elapsed))
+        let windowStart = elapsed == 0 ? today : calendar.date(byAdding: .day, value: -divisor, to: today)!
+        var buckets: [Date: Double] = [:]
+        for entry in dailyHours where entry.hours.isFinite && entry.hours >= 0 {
+            let day = calendar.startOfDay(for: entry.date)
+            if day >= start && day <= today { buckets[day, default: 0] += entry.hours }
+        }
+        let done = buckets.values.reduce(0,+)
+        let recent = buckets.filter { $0.key >= windowStart && (elapsed == 0 || $0.key < today) }.values.reduce(0,+)
+        let pace = recent / Double(divisor)
+        let final = done + pace * Double(days)
+        let remaining = max(0, target - done)
+        let necessary: Double? = days > 0 ? remaining / Double(days) : remaining == 0 ? 0 : nil
+        let state: ProjectionStatus
+        if rawDays < 0 { state = .past }
+        else if done >= target { state = .reached }
+        else if days == 0 { state = .examToday }
+        else if let necessary, necessary > dailyGoal || necessary > 12 { state = .unsustainable }
+        else if final >= target { state = .onTrack }
+        else { state = .behind }
+        var points = [ProjectionPoint(date: start, hours: 0)], total = 0.0
+        // Sparse zero-day plateau points keep the chart exact without enumerating years of empty days.
+        for day in buckets.keys.sorted() {
+            if let previous = calendar.date(byAdding: .day, value: -1, to: day), previous > points.last!.date {
+                points.append(ProjectionPoint(date: previous, hours: total))
+            }
+            total += buckets[day]!
+            if day == points.last!.date { points[points.count-1] = ProjectionPoint(date: day, hours: total) }
+            else { points.append(ProjectionPoint(date: day, hours: total)) }
+        }
+        if points.last!.date < today { points.append(ProjectionPoint(date: today, hours: done)) }
+        return StudyProjection(requiredHours: target, doneHours: done, currentPace: pace, finalHours: final,
+            necessaryPace: necessary, shortfall: max(0, target-final), daysRemaining: days, status: state,
+            preparationStart: start, asOf: today, examDate: calendar.startOfDay(for: examDate),
+            studiedDays: buckets.values.filter { $0 > 0 }.count, actualPoints: points)
+    }
 }

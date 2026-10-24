@@ -18,3 +18,20 @@
 | Ore necessarie / inizio preparazione | Ricerca nei modelli e nelle viste | Non esistono ancora. Nessun valore da dedurre dall’obiettivo giornaliero o da weeklyGoal della materia |
 
 Il censimento non modifica il codice. Le implementazioni iniziano nel Compito 2.
+
+## Compito 2 — modello, formule e cache
+
+Aggiunti solo i campi opzionali StudyExam.requiredStudyHours e preparationStart, conservati anche da ExamRecord/backup JSON. Nessun valore assegnato agli esami precedenti. Backup personale pre-schema creato in sola lettura: `~/Library/Application Support/Komorebi Study/Backups/Pre-proiezione-20261024-105508`; integrità della copia controllata. Nessuna migrazione personale eseguita durante le prove. Al primo avvio la build controlla le colonne SQLite prima di ModelContainer e crea un backup datato Projection se mancano (o la lettura non riesce).
+
+ProjectionCalculator è una funzione pura su ore giornaliere e date, indipendente da SwiftData/UI/timer. ExamCalendarDays.remaining è condivisa con NextExamCountdown: giorni tra gli inizi delle giornate locali, escluso il giorno dell’esame, con supporto ai cambi d’ora.
+
+- Fatte = sessioni salvate della materia dal giorno iniziale, incluse quelle salvate oggi. Sessione in corso esclusa. Ripartizione tra giorni e pause riusata da SavedStudyTiming.
+- Ritmo = ore negli ultimi min(7, giorni trascorsi dalla preparazione) giorni completi / stesso divisore; giorni a zero compresi. Oggi escluso per evitare una media su una giornata parziale; se la preparazione inizia oggi, si usano le sole sessioni salvate oggi e divisore 1.
+- Proiezione finale = fatte + ritmo × giorni rimasti.
+- Ritmo necessario = max(0, necessarie − fatte) / giorni rimasti. Oggi con ore mancanti il valore è non calcolabile, non infinito; se già raggiunto è zero. Esame passato escluso dalla card.
+- Ritardo = max(0, necessarie − proiezione finale).
+- Priorità stati: passato; raggiunto; esame oggi; ritmo necessario oltre obiettivo giornaliero o 12h; in linea; indietro. Le eccezioni oggi/passato sono esplicite e non introducono divisioni per zero.
+
+Il caso richiesto produce 20h fatte, 2h/giorno, 27 giorni, 74h previste, 130/27 = 4,8148h/giorno necessarie, 76h di ritardo, indietro con obiettivo giornaliero 6h.
+
+Lo store ricostruisce risultati e punti solo se cambiano i dati rilevanti di sessioni/esami, ore/data iniziale, materie attive, obiettivo giornaliero, giorno o fuso orario. Nessun calcolo durante hover, apertura menu, tick del timer o ridisegno UI. Le letture del risultato sono lookup in cache. Le aggregazioni giornaliere sono condivise tra esami della stessa materia. Le ore non vengono ripartite artificialmente tra esami diversi della stessa materia: ciascuno usa il proprio intervallo di preparazione.

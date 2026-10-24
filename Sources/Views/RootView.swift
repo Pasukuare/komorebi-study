@@ -661,7 +661,7 @@ struct NextExamCountdown {
         guard let next = exams.filter({ calendar.startOfDay(for: $0.date) >= today }).min(by: {
             $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date < $1.date
         }) else { return nil }
-        let days = calendar.dateComponents([.day], from: today, to: calendar.startOfDay(for: next.date)).day ?? 0
+        let days = ExamCalendarDays.remaining(until: next.date, from: date, calendar: calendar)
         return NextExamCountdown(id: next.id, title: titleForExam(next), date: next.date, days: days)
     }
     var countdownText: String {

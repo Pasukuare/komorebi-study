@@ -22,6 +22,10 @@ import AppKit
 }
 
 @MainActor final class StudyStore: ObservableObject {
+    private(set) var projectionExams: [StudyExam] = []
+    private(set) var projections: [UUID: StudyProjection] = [:]
+    private var projectionCacheKey: ProjectionCacheKey?
+    private(set) var projectionRevision = 0
     let audio = AmbientAudio()
     let container: ModelContainer
     let context: ModelContext
@@ -42,6 +46,7 @@ import AppKit
             }
             persistSettings()
             scheduleNotification()
+            if oldValue.dailyGoal != settings.dailyGoal { refreshProjections() }
         }
     }
     @Published var active: ActiveTimer?
@@ -52,7 +57,7 @@ import AppKit
             let boundary = clock.crossesCalendarBoundary(newValue)
             if boundary { objectWillChange.send() }
             clock.update(newValue)
-            if boundary { rebuildSubjectSummaries() }
+            if boundary { rebuildSubjectSummaries(); refreshProjections() }
         }
     }
     struct SubjectSummary { var count = 0; var total = 0.0; var week = 0.0; var month = 0.0 }
@@ -211,6 +216,9 @@ import AppKit
         if !inMemory, ColorIDMigrationBackup.needsExamKindBackup(configuration.url) {
             try ColorIDMigrationBackup.create(archiveURL: configuration.url, preferences: defaults.dictionaryRepresentation(), label: "ExamKinds")
         }
+        if !inMemory, ColorIDMigrationBackup.needsProjectionBackup(configuration.url) {
+            try ColorIDMigrationBackup.create(archiveURL: configuration.url, preferences: defaults.dictionaryRepresentation(), label: "Projection")
+        }
         container = try ModelContainer(for: schema, configurations: [configuration])
         context = ModelContext(container)
         var loadedSettings = defaults.data(forKey: "settings").flatMap { try? JSONDecoder().decode(UserSettings.self, from: $0) } ?? UserSettings()
@@ -283,6 +291,7 @@ import AppKit
             sessions = try context.fetch(FetchDescriptor<StudySession>(sortBy: [SortDescriptor(\.startDate, order: .reverse)]))
             exams = try context.fetch(FetchDescriptor<StudyExam>(sortBy: [SortDescriptor(\.date)]))
             subjects = try context.fetch(FetchDescriptor<Subject>(sortBy: [SortDescriptor(\.name)]))
+            refreshProjections()
         } catch { self.error = L10n.errorMessage(error) }
     }
     @discardableResult func save() -> Bool {
@@ -491,5 +500,55 @@ enum SavedStudyTiming {
             let overlap = max(0, min(end, interval.end).timeIntervalSince(max(start, interval.start)))
             return duration * min(1, overlap / span)
         }
+    }
+}
+
+
+@MainActor extension StudyStore {
+    struct ProjectionSessionKey: Equatable {
+        let id: UUID; let subject: UUID?; let start: Date; let end: Date; let seconds: Double; let activity: Data?
+    }
+    struct ProjectionExamKey: Equatable {
+        let id: UUID; let subject: UUID?; let date: Date; let hours: Double?; let start: Date?
+    }
+    struct ProjectionCacheKey: Equatable {
+        let sessions: [ProjectionSessionKey]; let exams: [ProjectionExamKey]; let completed: Set<UUID>
+        let today: Date; let zone: String; let dailyGoal: Double; let activeSubjects: Set<UUID>
+    }
+    func refreshProjections() {
+        let calendar = Calendar.current
+        let key = ProjectionCacheKey(sessions: sessions.map { .init(id: $0.id, subject: $0.subjectID, start: $0.startDate, end: $0.endDate, seconds: $0.duration, activity: $0.activityData) },
+            exams: exams.map { .init(id: $0.id, subject: $0.subjectID, date: $0.date, hours: $0.requiredStudyHours, start: $0.preparationStart) },
+            completed: completedSubjectIDs, today: calendar.startOfDay(for: now), zone: calendar.timeZone.identifier, dailyGoal: settings.dailyGoal, activeSubjects: activeSubjectIDs)
+        guard key != projectionCacheKey else { return }
+        projectionCacheKey = key; projectionRevision += 1
+        projectionExams = homeExams.filter { $0.subjectID.map(activeSubjectIDs.contains) == true && ExamCalendarDays.remaining(until: $0.date, from: now, calendar: calendar) >= 0 }
+            .sorted { $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date < $1.date }
+        var earliest: [UUID: Date] = [:]
+        for exam in projectionExams {
+            if let id = exam.subjectID, let start = exam.preparationStart, exam.requiredStudyHours != nil {
+                earliest[id] = min(earliest[id] ?? start, calendar.startOfDay(for: start))
+            }
+        }
+        var buckets: [UUID: [Date: Double]] = [:]
+        for session in sessions {
+            guard let id = session.subjectID, let start = earliest[id] else { continue }
+            let end = min(session.endDate, calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))!)
+            var day = calendar.startOfDay(for: max(start, session.startDate))
+            let timing = savedTiming(for: session)
+            while day < end {
+                guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+                buckets[id, default: [:]][day, default: 0] += timing.contribution(in: DateInterval(start: day, end: min(next,end))) / 3600
+                day = next
+            }
+        }
+        var result: [UUID: StudyProjection] = [:]
+        for exam in projectionExams {
+            guard let id = exam.subjectID else { continue }
+            result[exam.id] = ProjectionCalculator.calculate(requiredHours: exam.requiredStudyHours, preparationStart: exam.preparationStart,
+                examDate: exam.date, now: now, dailyGoal: settings.dailyGoal,
+                dailyHours: (buckets[id] ?? [:]).map { ProjectionDailyHours(date: $0.key, hours: $0.value) }, calendar: calendar)
+        }
+        projections = result
     }
 }

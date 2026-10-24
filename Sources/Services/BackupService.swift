@@ -156,3 +156,16 @@ extension ColorIDMigrationBackup {
         return result != SQLITE_OK
     }
 }
+
+extension ColorIDMigrationBackup {
+    static func needsProjectionBackup(_ url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { if let db { sqlite3_close(db) }; return true }
+        defer { sqlite3_close(db) }
+        var statement: OpaquePointer?
+        let result = sqlite3_prepare_v2(db, "SELECT ZREQUIREDSTUDYHOURS, ZPREPARATIONSTART FROM ZSTUDYEXAM LIMIT 0", -1, &statement, nil)
+        defer { sqlite3_finalize(statement) }
+        return result != SQLITE_OK
+    }
+}
