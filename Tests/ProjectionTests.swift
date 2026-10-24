@@ -11,6 +11,20 @@ import AppKit
     func calculate(target: Double? = 150, offset: Int = 27, start: Int = -10, entries: [ProjectionDailyHours] = []) -> StudyProjection? {
         ProjectionCalculator.calculate(requiredHours: target, preparationStart: day(start), examDate: day(offset), now: today, dailyGoal: 6, dailyHours: entries, calendar: calendar)
     }
+    func testFuturePreparationStartsTomorrowAndLater() throws {
+        for offset in [1, 2, 10, 26] {
+            let r = try XCTUnwrap(calculate(target:52,start:offset,entries:[.init(date:day(-1),hours:10)]))
+            XCTAssertTrue(r.isScheduled)
+            XCTAssertEqual(r.doneHours,0)
+            XCTAssertEqual(r.currentPace,0)
+            XCTAssertEqual(r.finalHours,0)
+            XCTAssertEqual(try XCTUnwrap(r.necessaryPace),52/Double(27-offset),accuracy:0.0001)
+            XCTAssertEqual(r.forecastStart,calendar.startOfDay(for:day(offset)))
+        }
+        XCTAssertNil(calculate(start:28))
+        let started = ProjectionCalculator.calculate(requiredHours:52,preparationStart:day(1),examDate:day(27),now:day(1),dailyGoal:6,dailyHours:[],calendar:calendar)
+        XCTAssertFalse(try XCTUnwrap(started).isScheduled)
+    }
     func testRequiredNumericalExample() throws {
         let entries = (-7 ... -1).map { ProjectionDailyHours(date: day($0), hours: 2) } + [.init(date: day(-9), hours: 6)]
         let r = try XCTUnwrap(calculate(entries: entries))

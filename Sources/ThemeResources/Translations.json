@@ -510,5 +510,8 @@
   "Piano: %@ h": "Plan: %@ h",
   "Proiezione delle ore di studio": "Study hours projection",
   "Proiezione tratteggiata": "Dashed projection",
-  "Piano": "Plan"
+  "Piano": "Plan",
+  "Preparazione dal %@": "Preparation starts on %@",
+  "Preparazione programmata": "Preparation scheduled",
+  "Servono %@ h al giorno dalla data di inizio. Il ritmo sarà calcolato dopo l’inizio della preparazione.": "You need %@ h per day from the start date. Your pace will be calculated once preparation begins."
 }

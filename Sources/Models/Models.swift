@@ -369,6 +369,8 @@ struct StudyProjection: Equatable {
     let finalHours: Double; let necessaryPace: Double?; let shortfall: Double
     let daysRemaining: Int; let status: ProjectionStatus; let preparationStart: Date; let asOf: Date; let examDate: Date
     let studiedDays: Int; let actualPoints: [ProjectionPoint]
+    var isScheduled: Bool { preparationStart > asOf }
+    var forecastStart: Date { max(preparationStart, asOf) }
 }
 /// Pure calculation, independent of SwiftData, UI, preferences and the running timer.
 enum ProjectionCalculator {
@@ -376,7 +378,9 @@ enum ProjectionCalculator {
                           now: Date, dailyGoal: Double, dailyHours: [ProjectionDailyHours], calendar: Calendar = .current) -> StudyProjection? {
         guard let target = requiredHours, target.isFinite, target > 0, let preparationStart else { return nil }
         let start = calendar.startOfDay(for: preparationStart), today = calendar.startOfDay(for: now)
-        guard start <= today else { return nil }
+        let examDay = calendar.startOfDay(for: examDate)
+        // A planned start is valid; the exam day itself supplies no preparation days.
+        guard start <= max(today, examDay) else { return nil }
         let rawDays = ExamCalendarDays.remaining(until: examDate, from: now, calendar: calendar)
         let days = max(0, rawDays)
         let elapsed = max(0, calendar.dateComponents([.day], from: start, to: today).day ?? 0)
@@ -392,7 +396,8 @@ enum ProjectionCalculator {
         let pace = recent / Double(divisor)
         let final = done + pace * Double(days)
         let remaining = max(0, target - done)
-        let necessary: Double? = days > 0 ? remaining / Double(days) : remaining == 0 ? 0 : nil
+        let availableDays = max(0, ExamCalendarDays.remaining(until: examDate, from: max(start, today), calendar: calendar))
+        let necessary: Double? = availableDays > 0 ? remaining / Double(availableDays) : remaining == 0 ? 0 : nil
         let state: ProjectionStatus
         if rawDays < 0 { state = .past }
         else if done >= target { state = .reached }

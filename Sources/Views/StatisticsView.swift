@@ -370,7 +370,11 @@ struct ProjectionTargetEditor: View {
         _start = State(initialValue: exam.preparationStart ?? Calendar.current.startOfDay(for: Date()))
     }
     private var hours: Double? { ProjectionTargetInput.hours(hoursText) }
-    private var latestStart: Date { min(Calendar.current.startOfDay(for: store.now), Calendar.current.startOfDay(for: exam.date)) }
+    private var latestStart: Date {
+        let calendar = Calendar.current
+        let examDay = calendar.startOfDay(for: exam.date)
+        return max(calendar.startOfDay(for: store.now), calendar.date(byAdding: .day, value: -1, to: examDay)!)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             let name = exam.subjectID.flatMap { store.subjectsByID[$0]?.name } ?? exam.title
@@ -399,6 +403,7 @@ enum ProjectionText {
     static func number(_ value: Double) -> String { value.formatted(.number.precision(.fractionLength(0...1)).locale(L10n.locale)) }
     static func rate(_ value: Double) -> String { value.formatted(.number.precision(.fractionLength(1)).locale(L10n.locale)) }
     static func headline(_ r: StudyProjection) -> String {
+        if r.isScheduled { return L10n.tr("Preparazione dal %@", r.preparationStart.formatted(.dateTime.day().month(.wide).year().locale(L10n.locale))) }
         switch r.status {
         case .reached: return L10n.tr("Obiettivo ore raggiunto: %@ h su %@ h", number(r.doneHours), number(r.requiredHours))
         case .onTrack: return L10n.tr("Sei in linea: arrivi con %@ h su %@ h", number(r.finalHours), number(r.requiredHours))
@@ -407,6 +412,9 @@ enum ProjectionText {
         }
     }
     static func detail(_ r: StudyProjection, dailyGoal: Double) -> String {
+        if r.isScheduled, let needed = r.necessaryPace {
+            return L10n.tr("Servono %@ h al giorno dalla data di inizio. Il ritmo sarà calcolato dopo l’inizio della preparazione.", rate(needed))
+        }
         guard let needed = r.necessaryPace else { return L10n.tr("L’esame è oggi: restano %@ h e nessun altro giorno di preparazione", number(max(0,r.requiredHours-r.doneHours))) }
         if r.status == .reached { return L10n.tr("Ore necessarie già raggiunte") }
         if needed > dailyGoal { return L10n.tr("Il tuo obiettivo di %@ h al giorno non basta: ne servono %@", number(dailyGoal), rate(needed)) }
@@ -434,6 +442,7 @@ struct ProjectionSummary: View {
         }
     }
     private var status: String {
+        if result.isScheduled { return L10n.tr("Preparazione programmata") }
         switch result.status {
         case .reached: return L10n.tr("Obiettivo raggiunto")
         case .onTrack: return L10n.tr("In linea")
@@ -498,7 +507,7 @@ struct ProjectionChart: View {
                         .foregroundStyle(actualColor).lineStyle(StrokeStyle(lineWidth: DesignSystem.ProjectionLayout.stroke))
                 }
             }
-            ForEach([ProjectionPoint(date: result.asOf, hours: result.doneHours), ProjectionPoint(date: result.examDate, hours: result.finalHours)]) { point in
+            ForEach([ProjectionPoint(date: result.forecastStart, hours: result.doneHours), ProjectionPoint(date: result.examDate, hours: result.finalHours)]) { point in
                 LineMark(x: .value(L10n.tr("Data"), point.date), y: .value(L10n.tr("Ore"), point.hours), series: .value("series", "forecast"))
                     .foregroundStyle(forecastColor).lineStyle(StrokeStyle(lineWidth: DesignSystem.ProjectionLayout.stroke, dash: DesignSystem.ProjectionLayout.dash))
             }
@@ -516,10 +525,12 @@ struct ProjectionChart: View {
                 .annotation(position: .top, alignment: .trailing) {
                     Text(ProjectionText.number(result.requiredHours) + " h").font(theme.typography.caption).foregroundStyle(theme.palette.textPrimary)
                 }
+            if !result.isScheduled {
             RuleMark(x: .value(L10n.tr("Data"), result.asOf))
                 .foregroundStyle(theme.palette.textSecondary.opacity(theme.appearance.opacity0_35))
                 .lineStyle(StrokeStyle(lineWidth: DesignSystem.ProjectionLayout.planStroke, dash: DesignSystem.ProjectionLayout.todayDash))
                 .annotation(position: .top) { Text(L10n.tr("Oggi")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary) }
+            }
             if let selected {
                 RuleMark(x: .value(L10n.tr("Data"), selected)).foregroundStyle(theme.palette.border)
             }
@@ -586,7 +597,7 @@ struct ProjectionChart: View {
     }
     private func hours(at date: Date) -> Double {
         if date <= result.asOf { return result.actualPoints.last(where: { $0.date <= date })?.hours ?? 0 }
-        return result.doneHours + result.currentPace * Double(ExamCalendarDays.remaining(until: date, from: result.asOf))
+        return result.doneHours + result.currentPace * Double(ExamCalendarDays.remaining(until: date, from: result.forecastStart))
     }
     private func plan(at date: Date) -> Double {
         let total = max(1, ExamCalendarDays.remaining(until: result.examDate, from: result.preparationStart))
