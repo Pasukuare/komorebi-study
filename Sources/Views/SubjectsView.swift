@@ -10,6 +10,7 @@ struct SubjectsView: View {
     @State private var goal = 5.0
     @State private var editing: Subject?
     @State private var deleting: Subject?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func subjectMetric(_ title: String, value: Double) -> some View {
         VStack(alignment: .leading, spacing: DesignSystem.PreservedGeometry.gap5) { Text(title).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary); Text(durationText(value)).font(appTheme.preservedTypography.subjectMetric).monospacedDigit() }.frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -36,33 +37,92 @@ struct SubjectsView: View {
                             .font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
                     }
                 }
-                ForEach(store.subjects) { s in
-                    Card(identity: s.id.uuidString + s.name + s.icon + s.color + String(s.weeklyGoal)) {
-                        HStack { SubjectIconTile(symbol: s.icon, color: appTheme.subjectColor(s.color)); Text(s.name).font(appTheme.preservedTypography.title3).foregroundStyle(appTheme.subjectColor(s.color)); Spacer(); Button(L10n.tr("Modifica")) { editing = s }; Button(L10n.tr("Elimina"), role: .destructive) { deleting = s }.disabled(store.active?.subjectID == s.id) }
-                        if s.isCompleted {
-                            HStack(spacing: DesignSystem.Spacing.sm) {
-                                Label(L10n.tr("Completata"), systemImage: "checkmark.circle")
-                                if let grade = s.grade, !grade.isEmpty {
-                                    Text(L10n.tr("Voto: %@", grade))
-                                }
-                            }.font(appTheme.preservedTypography.caption)
-                                .foregroundStyle(appTheme.palette.textSecondary)
-                        }
-                        HStack(spacing: DesignSystem.Spacing.xl) {
-                            subjectMetric(L10n.tr("Settimana"), value: store.total(in: store.week, subject: s.id))
-                            let monthInterval = Calendar.current.dateInterval(of: .month, for: store.now) ?? DateInterval(start: store.now, end: store.now)
-                            subjectMetric(L10n.tr("Mese"), value: store.total(in: monthInterval, subject: s.id))
-                            subjectMetric(L10n.tr("Sempre"), value: store.sessions.filter { $0.subjectID == s.id }.reduce(0) { $0 + $1.duration })
-                        }
-                        Text(L10n.count(store.sessions.filter { $0.subjectID == s.id }.count, singular: "%@ sessione salvata", plural: "%@ sessioni salvate")).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary)
-                        if !s.isCompleted { GoalBar(title: L10n.tr("Obiettivo settimanale"), value: store.total(in: store.week, subject: s.id), goal: s.weeklyGoal * 3600, color: appTheme.subjectColor(s.color)) }
-                    }
+                sectionTitle(L10n.tr("Da completare"), count: store.activeSubjects.count)
+                if store.activeSubjects.isEmpty {
+                    Text(L10n.tr("Nessuna materia da completare.")).foregroundStyle(appTheme.palette.textSecondary)
                 }
+                ForEach(store.activeSubjects) { subject in activeCard(subject).transition(.opacity) }
+                Button {
+                    store.settings.completedSubjectsExpanded = !(store.settings.completedSubjectsExpanded ?? true)
+                } label: {
+                    HStack {
+                        sectionTitle(L10n.tr("Completate"), count: store.completedSubjects.count)
+                        Image(systemName: store.settings.completedSubjectsExpanded ?? true ? "chevron.down" : "chevron.right")
+                    }.contentShape(Rectangle())
+                }.buttonStyle(.plain).interactiveHover(listRow: true)
+                    .modifier(KeyboardFocusBorder())
+                    .accessibilityLabel(L10n.tr("Completate: %@", String(store.completedSubjects.count)))
+                    .accessibilityValue(store.settings.completedSubjectsExpanded ?? true ? L10n.tr("Espansa") : L10n.tr("Compressa"))
+                if store.settings.completedSubjectsExpanded ?? true {
+                    if store.completedSubjects.isEmpty {
+                        Text(L10n.tr("Le materie che completi compaiono qui.")).foregroundStyle(appTheme.palette.textSecondary)
+                    }
+                    ForEach(store.completedSubjects) { subject in completedCard(subject).transition(.opacity) }
+                }
+
             }.padding(DesignSystem.Layout.contentPadding).frame(maxWidth: DesignSystem.Layout.contentMaximum).frame(maxWidth: .infinity)
         }.defaultScrollAnchor(.top, for: .initialOffset)
+            .animation(reduceMotion || store.settings.animations == "Off" ? nil : .easeOut(duration: DesignSystem.SubjectAppearance.sectionTransitionDuration), value: store.activeSubjects.map(\.id))
             .sheet(item: $editing) { SubjectEditor(subject: $0) }
             .alert(L10n.tr("Eliminare la materia?"), isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) { Button(L10n.tr("Annulla"), role: .cancel) {}; Button(L10n.tr("Elimina"), role: .destructive) { if let deleting { if store.settings.lastSubject == deleting.id { store.settings.lastSubject = nil }; store.context.delete(deleting); store.save() }; deleting = nil } } message: { Text(L10n.tr("Le sessioni passate e il loro nome verranno conservati.")) }
     }
+    private func sectionTitle(_ title: String, count: Int) -> some View {
+        HStack {
+            Text(title).font(appTheme.typography.heading)
+            Text(String(count)).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+            Spacer()
+        }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+    }
+    private func activeCard(_ subject: Subject) -> some View {
+        let summary = store.subjectSummaries[subject.id] ?? StudyStore.SubjectSummary()
+        return Card(identity: subject.id) {
+            HStack {
+                SubjectIconTile(symbol: subject.icon, color: appTheme.subjectColor(subject.color))
+                Text(verbatim: subject.name).font(appTheme.preservedTypography.title3).foregroundStyle(appTheme.subjectColor(subject.color))
+                Spacer()
+                Button(L10n.tr("Modifica")) { editing = subject }
+                Button(L10n.tr("Elimina"), role: .destructive) { deleting = subject }.disabled(store.active?.subjectID == subject.id)
+            }
+            HStack(spacing: DesignSystem.Spacing.xl) {
+                subjectMetric(L10n.tr("Settimana"), value: summary.week)
+                subjectMetric(L10n.tr("Mese"), value: summary.month)
+                subjectMetric(L10n.tr("Sempre"), value: summary.total)
+            }
+            Text(L10n.count(summary.count, singular: "%@ sessione salvata", plural: "%@ sessioni salvate"))
+                .font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+            GoalBar(title: L10n.tr("Obiettivo settimanale"), value: summary.week, goal: subject.weeklyGoal * 3600, color: appTheme.subjectColor(subject.color))
+        }
+    }
+    private func completedCard(_ subject: Subject) -> some View {
+        let summary = store.subjectSummaries[subject.id] ?? StudyStore.SubjectSummary()
+        return Card(identity: subject.id) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                SubjectIconTile(symbol: subject.icon, color: appTheme.subjectColor(subject.color))
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    Text(verbatim: subject.name).font(appTheme.typography.small).lineLimit(2)
+                    if let date = subject.completedAt {
+                        Text(L10n.tr("Completata il %@", date.formatted(.dateTime.day().month(.abbreviated).locale(L10n.locale))))
+                            .font(appTheme.typography.caption)
+                    }
+                    if let note = subject.gradeNote, !note.isEmpty { Text(verbatim: note).font(appTheme.typography.caption) }
+                }.foregroundStyle(appTheme.palette.textSecondary).frame(maxWidth: .infinity, alignment: .leading)
+                Spacer(minLength: DesignSystem.Spacing.sm)
+                Group {
+                    if let grade = subject.gradeValue {
+                        Text(String(grade) + ((subject.gradeHonors ?? false) && grade == 30 ? L10n.tr(" e lode") : ""))
+                    } else { Image(systemName: "checkmark") }
+                }.font(appTheme.typography.small).padding(DesignSystem.Spacing.xs)
+                    .background(appTheme.palette.surface, in: RoundedRectangle(cornerRadius: DesignSystem.Radius.control))
+                    .accessibilityLabel(subject.gradeValue.map { L10n.tr("Voto: %@", String($0) + ((subject.gradeHonors ?? false) ? L10n.tr(" e lode") : "")) } ?? L10n.tr("Completata"))
+                Text(durationText(summary.total) + " · " + L10n.count(summary.count, singular: "%@ sessione", plural: "%@ sessioni"))
+                    .font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true).frame(maxWidth: DesignSystem.PreservedGeometry.points132, alignment: .trailing)
+                Button(L10n.tr("Modifica")) { editing = subject }.fixedSize()
+                CompletedSubjectActions(subject: subject, delete: { deleting = subject })
+            }
+        }
+    }
+
 }
 
 /// Creation and editing share the same controls; opening an editor never changes the creation draft.
@@ -168,11 +228,30 @@ struct SubjectEditor: View {
                                       goal: $draft.goal, nameFocused: $nameFocused, isEditing: true)
                     Toggle(L10n.tr("Materia completata"), isOn: $draft.completed)
                         .toggleStyle(StudyToggleStyle())
+                        .onChange(of: draft.completed) { old, new in if new && !old && draft.completedAt == nil && !subject.isCompleted { draft.completedAt = Date() } }
                     if draft.completed {
                         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                             Text(L10n.tr("Voto (facoltativo)")).foregroundStyle(appTheme.palette.textSecondary)
-                            StudyTextEntry(L10n.tr("Es. 30 e lode, 28/30, Idoneità"), text: $draft.grade)
-                                .textFieldStyle(StudyTextFieldStyle())
+                            StudyTextEntry(L10n.tr("Da 18 a 30"), text: $draft.grade).textFieldStyle(StudyTextFieldStyle())
+                            if !draft.validGrade {
+                                Text(L10n.tr("Inserisci un voto da 18 a 30")).font(appTheme.typography.caption).foregroundStyle(appTheme.appearance.destructiveInk)
+                            }
+                            if Int(draft.grade.trimmingCharacters(in: .whitespacesAndNewlines)) == 30 {
+                                Toggle(L10n.tr("Lode"), isOn: $draft.honors).toggleStyle(StudyToggleStyle())
+                            }
+                            if let date = draft.completedAt {
+                                DatePicker(L10n.tr("Data di completamento"), selection: Binding(get: { draft.completedAt ?? date }, set: { draft.completedAt = $0 }), displayedComponents: .date)
+                            } else {
+                                HStack {
+                                    Text(L10n.tr("Data non disponibile")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                                    Spacer()
+                                    Button(L10n.tr("Aggiungi data")) { draft.completedAt = Date() }
+                                }
+                            }
+                            if let note = draft.gradeNote, !note.isEmpty {
+                                Text(L10n.tr("Nota del voto precedente")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                                Text(verbatim: note).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                            }
                         }
                     }
                     if saveFailed {
@@ -277,5 +356,31 @@ private struct SubjectEditorWindowMetrics: NSViewRepresentable {
             observers.removeAll(); attachedSheet = nil
         }
         deinit { observers.forEach(NotificationCenter.default.removeObserver) }
+    }
+}
+
+private struct CompletedSubjectActions: View {
+    @ObservedObject private var appLocalization = AppLocalization.shared
+    @EnvironmentObject private var store: StudyStore
+    @Environment(\.studyTheme) private var theme
+    let subject: Subject
+    let delete: () -> Void
+    @State private var showing = false
+    var body: some View {
+        Button { showing.toggle() } label: {
+            Image(systemName: "ellipsis").frame(width: DesignSystem.Interaction.controlHeight, height: DesignSystem.Interaction.controlHeight).contentShape(Rectangle())
+        }.accessibilityLabel(L10n.tr("Azioni della materia"))
+            .popover(isPresented: $showing) {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    Button(L10n.tr("Riapri")) {
+                        subject.isCompleted = false
+                        if !store.save() { subject.isCompleted = true }
+                        showing = false
+                    }
+                    Button(L10n.tr("Elimina"), role: .destructive) { showing = false; delete() }
+                        .disabled(store.active?.subjectID == subject.id)
+                }.padding(DesignSystem.Spacing.md).background(theme.palette.elevatedSurface)
+                    .onExitCommand { showing = false }
+            }
     }
 }

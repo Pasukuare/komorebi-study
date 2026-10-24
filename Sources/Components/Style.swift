@@ -115,6 +115,7 @@ enum DesignSystem {
         static let high = Shadow(color: tint.opacity(0.18), radius: 24, y: 8)
     }
     enum SubjectAppearance {
+        static let sectionTransitionDuration = 0.25
         static let tile: CGFloat = 36, radius: CGFloat = 10
         static let symbolGrid: CGFloat = 24, symbolSize: CGFloat = 20
         static let fillOpacity: Double = 0.15

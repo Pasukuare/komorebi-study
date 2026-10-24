@@ -10,7 +10,7 @@ import AppKit
         let defaults = UserDefaults(suiteName: "SubjectReview.\(UUID())")!
         let store = try StudyStore(inMemory: true, defaults: defaults)
         let subject = Subject(name: "Materia con un nome lungo per la prova della finestra", color: "inverno.brina")
-        subject.isCompleted = true; subject.grade = "28"
+        subject.isCompleted = true; subject.grade = "28"; subject.gradeValue = 28
         store.context.insert(subject); XCTAssertTrue(store.save())
         for package in ThemeRegistry.packages {
             for mode in ThemeMode.allCases {

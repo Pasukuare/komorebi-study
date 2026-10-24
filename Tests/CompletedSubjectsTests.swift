@@ -96,3 +96,26 @@ extension CompletedSubjectsTests {
         XCTAssertTrue(ColorIDMigrationBackup.needsCompletionBackup(backups[0].appendingPathComponent("Study.store")))
     }
 }
+
+extension CompletedSubjectsTests {
+    func testThirtyFiveSubjectsUseCachedSummariesAndCompletionOrderPersists() throws {
+        let s = try store()
+        for index in 0..<35 {
+            let subject = Subject(name: "Materia \(index)")
+            subject.isCompleted = index % 2 == 0
+            subject.completedAt = Date(timeIntervalSince1970: Double(index)*1000)
+            s.context.insert(subject)
+            s.context.insert(StudySession(start: s.day.start, end: s.day.start.addingTimeInterval(1200), duration: 1200, subjectID: subject.id, subjectName: subject.name, mode: "Pomodoro", pause: 0))
+        }
+        XCTAssertTrue(s.save())
+        let revision = s.subjectCatalogRevision
+        for _ in 0..<1000 {
+            XCTAssertEqual(s.completedSubjects.first?.name, "Materia 34")
+            XCTAssertEqual(s.subjectSummaries[s.completedSubjects.first!.id]?.count, 1)
+        }
+        XCTAssertEqual(s.subjectCatalogRevision, revision)
+        s.settings.completedSubjectsExpanded = false
+        XCTAssertEqual(try JSONDecoder().decode(UserSettings.self, from: JSONEncoder().encode(s.settings)).completedSubjectsExpanded, false)
+        XCTAssertEqual(s.subjectSummaries.values.reduce(0) { $0+$1.count }, 35)
+    }
+}

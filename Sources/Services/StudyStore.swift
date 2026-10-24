@@ -49,11 +49,29 @@ import AppKit
     var now: Date {
         get { clock.now }
         set {
-            if clock.crossesCalendarBoundary(newValue) { objectWillChange.send() }
+            let boundary = clock.crossesCalendarBoundary(newValue)
+            if boundary { objectWillChange.send() }
             clock.update(newValue)
+            if boundary { rebuildSubjectSummaries() }
         }
     }
-    @Published var sessions: [StudySession] = []
+    struct SubjectSummary { var count = 0; var total = 0.0; var week = 0.0; var month = 0.0 }
+    private(set) var subjectSummaries: [UUID: SubjectSummary] = [:]
+    private func rebuildSubjectSummaries() {
+        let weekInterval = week
+        let month = Calendar.current.dateInterval(of: .month, for: now) ?? weekInterval
+        var result: [UUID: SubjectSummary] = [:]
+        for session in sessions {
+            guard let id = session.subjectID else { continue }
+            var value = result[id] ?? SubjectSummary()
+            value.count += 1; value.total += session.duration
+            let timing = savedTiming(for: session)
+            value.week += timing.contribution(in: weekInterval); value.month += timing.contribution(in: month)
+            result[id] = value
+        }
+        subjectSummaries = result
+    }
+    @Published var sessions: [StudySession] = [] { didSet { rebuildSubjectSummaries() } }
     @Published var exams: [StudyExam] = []
     @Published var subjects: [Subject] = [] { didSet { rebuildSubjectCatalog() } }
     @Published private(set) var activeSubjects: [Subject] = []

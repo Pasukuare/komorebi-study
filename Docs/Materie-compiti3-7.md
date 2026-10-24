@@ -11,3 +11,13 @@ All’avvio reale la nuova build controlla lo schema in sola lettura e crea una 
 Introdotta la sorgente activeSubjects/completedSubjects nello store, aggiornata al salvataggio solo se la firma dei dati delle materie cambia. Home e Timer usano la sorgente attiva; preparedSubject ripiega sulla prima attiva. Completare una materia non modifica il timer già attivo o la sua sessione salvata. I totali di consultazione restano intatti; solo il progresso dell’obiettivo settimanale esclude le completate, mantenendo il valore dell’obiettivo impostato dall’utente. Non si sottrae la durata degli obiettivi delle materie dal target generale, essendo due impostazioni indipendenti. Calendario e pigmenti invariati.
 
 Verifica: 154 test Release, zero errori, uno saltato per fixture facoltativa. Compresi: migrazione SQLite da modello congelato build 20, copia prima dell’aggiunta delle colonne, caso Misure Elettroniche voto 18, date mancanti, note preservate, idempotenza, sessione attiva, esclusione dal solo obiettivo settimanale e cache invariata ai tick/refresh senza modifiche alle materie.
+
+## Compito 4
+
+Due sezioni con titoli e contatori accessibili. Da completare usa le card precedenti; Completate è comprimibile (preferenza salvata, inizialmente aperta), ordinata per data decrescente con date sconosciute in fondo. Riga compatta con tile/nome, data solo se nota, voto o spunta, tempo/sessioni, Modifica e popover azioni Riapri/Elimina. Eliminazione mantiene la conferma e il blocco per materia della sessione attiva. Nessuna eliminazione eseguita durante lo sviluppo. Note dei voti legacy mostrate integralmente; media aritmetica opzionale non aggiunta.
+
+Il modulo ora accetta voto vuoto o intero 18–30; la lode compare solo a 30 e non può essere salvata con un voto diverso. Messaggio inline e Salva disabilitato per valori non validi. Le date sconosciute delle già completate restano vuote: l’utente può esplicitamente aggiungerle. Nuove completate partono da oggi. Titolo/footer rimangono fissi e le tab rimangono orizzontali come nel checkpoint precedente.
+
+Transizione di opacità 250 ms al cambio di sezione, disattivata con Riduci movimento o Animazioni Off. Niente timer/animazioni continui. Riassunti di tempo/sessioni in cache, ricostruiti in un solo passaggio al cambio delle sessioni o al confine del giorno; nessun filtro per materia ripetuto in ogni card al movimento del mouse.
+
+Verifica: 155 test Release, nessun errore, uno saltato. Inclusi 35 materie, ordine e persistenza sezione, 1.000 letture del catalogo senza ricostruzioni, conservazione dei totali e aggiornamento a mezzanotte. Nessuna misura CPU o prova reale VoiceOver eseguita; non è certificato un limite numerico di consumo.
