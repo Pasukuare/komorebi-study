@@ -12,5 +12,7 @@ STAGING_DIR="$(mktemp -d)"
 trap 'rm -rf "$STAGING_DIR"' EXIT
 /usr/bin/ditto "$DESTINATION/Komorebi Study.app" "$STAGING_DIR/Komorebi Study.app"
 ln -s /Applications "$STAGING_DIR/Applications"
+cp "$PROJECT_ROOT/Scripts/Primo Avvio (Sblocca).command" "$STAGING_DIR/Primo Avvio (Sblocca).command"
+chmod +x "$STAGING_DIR/Primo Avvio (Sblocca).command"
 /usr/bin/hdiutil create -volname 'Komorebi Study' -srcfolder "$STAGING_DIR" -ov -format UDZO "$DESTINATION/Komorebi Study.dmg"
 /usr/bin/hdiutil verify "$DESTINATION/Komorebi Study.dmg"
