@@ -68,7 +68,7 @@ import SwiftData
             id = subject.id
             context.insert(subject)
             var draft = SubjectEditDraft(subject: subject)
-            draft.completed = true; draft.grade = " 30 e lode "
+            draft.completed = true; draft.grade = "30"; draft.honors = true
             XCTAssertFalse(subject.isCompleted)
             XCTAssertNil(subject.grade)
             draft.apply(to: subject)
@@ -79,18 +79,20 @@ import SwiftData
         let subject = try XCTUnwrap(context.fetch(FetchDescriptor<Subject>()).first)
         XCTAssertEqual(subject.id, id)
         XCTAssertTrue(subject.isCompleted)
-        XCTAssertEqual(subject.grade, "30 e lode")
+        XCTAssertEqual(subject.gradeValue, 30)
+        XCTAssertEqual(subject.gradeHonors, true)
         let backup = try JSONDecoder().decode(SubjectRecord.self, from: JSONEncoder().encode(SubjectRecord(subject)))
         XCTAssertTrue(backup.model.isCompleted)
-        XCTAssertEqual(backup.model.grade, "30 e lode")
+        XCTAssertEqual(backup.model.gradeValue, 30)
+        XCTAssertEqual(backup.model.gradeHonors, true)
         var draft = SubjectEditDraft(subject: subject)
         draft.completed = false
         draft.apply(to: subject)
         XCTAssertFalse(subject.isCompleted)
-        XCTAssertEqual(subject.grade, "30 e lode", "Reopening a subject must not silently erase its grade")
+        XCTAssertEqual(subject.gradeValue, 30, "Reopening must preserve grade")
         draft.completed = true; draft.grade = " \n "
         draft.apply(to: subject)
-        XCTAssertNil(subject.grade)
+        XCTAssertNil(subject.gradeValue)
     }
 
     func testLegacySubjectBackupWithoutCompletionFieldsStillDecodes() throws {

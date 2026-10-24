@@ -55,7 +55,7 @@ struct SubjectsView: View {
                             subjectMetric(L10n.tr("Sempre"), value: store.sessions.filter { $0.subjectID == s.id }.reduce(0) { $0 + $1.duration })
                         }
                         Text(L10n.count(store.sessions.filter { $0.subjectID == s.id }.count, singular: "%@ sessione salvata", plural: "%@ sessioni salvate")).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary)
-                        GoalBar(title: L10n.tr("Obiettivo settimanale"), value: store.total(in: store.week, subject: s.id), goal: s.weeklyGoal * 3600, color: appTheme.subjectColor(s.color))
+                        if !s.isCompleted { GoalBar(title: L10n.tr("Obiettivo settimanale"), value: store.total(in: store.week, subject: s.id), goal: s.weeklyGoal * 3600, color: appTheme.subjectColor(s.color)) }
                     }
                 }
             }.padding(DesignSystem.Layout.contentPadding).frame(maxWidth: DesignSystem.Layout.contentMaximum).frame(maxWidth: .infinity)
@@ -108,17 +108,31 @@ struct SubjectEditDraft {
     var goal: Double
     var completed: Bool
     var grade: String
+    var honors: Bool
+    var gradeNote: String?
+    var completedAt: Date?
     init(subject: Subject) {
         name = subject.name; icon = subject.icon; color = subject.color; goal = subject.weeklyGoal
-        completed = subject.isCompleted; grade = subject.grade ?? ""
+        completed = subject.isCompleted; grade = subject.gradeValue.map(String.init) ?? ""
+        honors = subject.gradeHonors ?? false; gradeNote = subject.gradeNote; completedAt = subject.completedAt
     }
-    var isValid: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var validGrade: Bool {
+        let value = grade.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty || (value.allSatisfy { "0123456789".contains($0) } && Int(value).map { (18...30).contains($0) } == true)
+    }
+    var isValid: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (!completed || validGrade) }
     func apply(to subject: Subject) {
+        guard isValid else { return }
         subject.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         subject.icon = icon; subject.color = color
+        let newlyCompleted = completed && !subject.isCompleted
         subject.isCompleted = completed
-        let trimmedGrade = grade.trimmingCharacters(in: .whitespacesAndNewlines)
-        subject.grade = trimmedGrade.isEmpty ? nil : trimmedGrade
+        if completed {
+            subject.gradeValue = Int(grade.trimmingCharacters(in: .whitespacesAndNewlines))
+            subject.gradeHonors = subject.gradeValue == 30 && honors
+            subject.completedAt = completedAt ?? (newlyCompleted ? Date() : subject.completedAt)
+        }
+        subject.gradeNote = gradeNote
         subject.weeklyGoal = goal.isFinite && goal >= 0 ? min(168, goal) : 5.0
     }
 }
@@ -185,6 +199,8 @@ struct SubjectEditor: View {
                     let original = SubjectEditDraft(subject: subject)
                     let originalCompleted = subject.completed
                     let originalGrade = subject.grade
+                    let originalValue = subject.gradeValue; let originalHonors = subject.gradeHonors
+                    let originalNote = subject.gradeNote; let originalDate = subject.completedAt
                     draft.apply(to: subject)
                     if store.save() { dismiss() }
                     else {
@@ -192,6 +208,8 @@ struct SubjectEditor: View {
                         subject.name = original.name; subject.icon = original.icon
                         subject.color = original.color; subject.weeklyGoal = original.goal
                         subject.completed = originalCompleted; subject.grade = originalGrade
+                        subject.gradeValue = originalValue; subject.gradeHonors = originalHonors
+                        subject.gradeNote = originalNote; subject.completedAt = originalDate
                         saveFailed = true
                     }
                 }.buttonStyle(ResponsiveButtonStyle(prominent: true))

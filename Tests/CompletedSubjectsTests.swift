@@ -1,0 +1,98 @@
+import XCTest
+import SwiftData
+@testable import KomorebiStudy
+
+@MainActor final class CompletedSubjectsTests: XCTestCase {
+    func store() throws -> StudyStore { try StudyStore(inMemory: true, defaults: UserDefaults(suiteName: "CompletedTests.\(UUID())")!) }
+    func testMigrationIsIdempotentAndPreservesOriginalTextAndSession() throws {
+        let s = try store()
+        let subject = Subject(name: "Misure Elettroniche"); subject.isCompleted = true; subject.grade = "18"; subject.completionVersion = nil
+        let session = StudySession(start: Date(timeIntervalSince1970: 1000), end: Date(timeIntervalSince1970: 2000), duration: 900, subjectID: subject.id, subjectName: subject.name, mode: "Pomodoro", pause: 100)
+        let unusual = Subject(name: "Idoneità"); unusual.grade = " 30 e lode "; unusual.isCompleted = true; unusual.completionVersion = nil
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        let before = try encoder.encode(SessionRecord(session))
+        XCTAssertEqual(SubjectCompletionMigration.apply(subjects: [subject,unusual], sessions: [session]), 2)
+        XCTAssertEqual(subject.grade, "18"); XCTAssertEqual(subject.gradeValue, 18)
+        XCTAssertEqual(subject.completedAt, session.endDate)
+        XCTAssertEqual(unusual.gradeNote, " 30 e lode "); XCTAssertNil(unusual.completedAt)
+        XCTAssertEqual(SubjectCompletionMigration.apply(subjects: [subject,unusual], sessions: [session]), 0)
+        XCTAssertEqual(try encoder.encode(SessionRecord(session)), before)
+    }
+    func testCompletingCurrentSubjectNeverChangesOrStopsActiveSession() throws {
+        let s = try store(); let a = s.subjects.first!
+        let b = Subject(name: "Seconda"); s.context.insert(b); XCTAssertTrue(s.save())
+        s.chooseSubject(a.id); s.start(); let active = s.active
+        a.isCompleted = true; XCTAssertTrue(s.save())
+        XCTAssertEqual(s.active?.id, active?.id); XCTAssertEqual(s.active?.subjectID, a.id)
+        XCTAssertEqual(s.preparedSubject?.id, b.id)
+        b.isCompleted = true; XCTAssertTrue(s.save()); XCTAssertNil(s.preparedSubject)
+        s.finish(); XCTAssertEqual(s.sessions.first?.subjectID, a.id)
+        b.isCompleted = false; XCTAssertTrue(s.save()); XCTAssertEqual(s.preparedSubject?.id, b.id)
+    }
+    func testCatalogIsNotRebuiltForClockOrSessionRefresh() throws {
+        let s = try store(); let revision = s.subjectCatalogRevision
+        s.now = Date().addingTimeInterval(3); s.refresh()
+        XCTAssertEqual(s.subjectCatalogRevision, revision)
+        s.subjects.first!.isCompleted = true; XCTAssertTrue(s.save())
+        XCTAssertGreaterThan(s.subjectCatalogRevision, revision)
+    }
+}
+
+extension CompletedSubjectsTests {
+    func testWeeklyGoalExcludesCompletedButHistoricalTotalsDoNot() throws {
+        let s = try store(); let a = s.subjects.first!
+        let b = Subject(name: "Conclusa"); b.isCompleted = true; s.context.insert(b)
+        let start = s.week.start.addingTimeInterval(3600)
+        for subject in [a,b] { s.context.insert(StudySession(start: start, end: start.addingTimeInterval(1800), duration: 1800, subjectID: subject.id, subjectName: subject.name, mode: "Pomodoro", pause: 0)) }
+        XCTAssertTrue(s.save())
+        XCTAssertEqual(s.total(in: s.week), 3600)
+        XCTAssertEqual(s.weeklyGoalProgress, 1800)
+        b.isCompleted = false; XCTAssertTrue(s.save()); XCTAssertEqual(s.weeklyGoalProgress, 3600)
+    }
+    func testTypedGradeValidationHonorsAndDateRetention() {
+        let subject = Subject(name: "Test")
+        var draft = SubjectEditDraft(subject: subject); draft.completed = true
+        for invalid in ["17","31","18.5","30 e lode","abc"] { draft.grade = invalid; XCTAssertFalse(draft.isValid) }
+        for valid in ["","18","30"] { draft.grade = valid; XCTAssertTrue(draft.isValid) }
+        draft.grade = "30"; draft.honors = true; draft.apply(to: subject)
+        let date = subject.completedAt; XCTAssertNotNil(date); XCTAssertEqual(subject.gradeValue,30); XCTAssertEqual(subject.gradeHonors,true)
+        draft = SubjectEditDraft(subject: subject); draft.completed = false; draft.apply(to: subject)
+        XCTAssertEqual(subject.completedAt,date); XCTAssertEqual(subject.gradeValue,30)
+        draft.completed = true; draft.grade = "28"; draft.apply(to: subject)
+        XCTAssertEqual(subject.gradeHonors,false); XCTAssertEqual(subject.completedAt,date)
+    }
+}
+
+private enum CompletionV20 {
+    @Model final class Subject {
+        @Attribute(.unique) var id: UUID
+        var name: String; var icon: String; var color: String; var weeklyGoal: Double
+        var completed: Bool? = nil; var grade: String? = nil
+        init(id: UUID) { self.id = id; name = "Misure Elettroniche"; icon = "book"; color = "classici.salvia"; weeklyGoal = 5; completed = true; grade = "18" }
+    }
+}
+extension CompletedSubjectsTests {
+    func testRealOldSchemaGetsBackupBeforeAdditiveMigration() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("Study.store"), id = UUID()
+        do {
+            let schema = Schema([CompletionV20.Subject.self, StudySession.self, StudyExam.self])
+            let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: url)])
+            let context = ModelContext(container)
+            context.insert(CompletionV20.Subject(id: id))
+            context.insert(StudySession(start: Date(timeIntervalSince1970: 1000), end: Date(timeIntervalSince1970: 2000), duration: 900, subjectID: id, subjectName: "Misure Elettroniche", mode: "Pomodoro", pause: 100))
+            try context.save()
+        }
+        XCTAssertTrue(ColorIDMigrationBackup.needsCompletionBackup(url))
+        let store = try StudyStore(defaults: UserDefaults(suiteName: "Migration.\(UUID())")!, archiveURL: url)
+        let subject = try XCTUnwrap(store.subjects.first { $0.id == id })
+        XCTAssertEqual(subject.gradeValue,18); XCTAssertEqual(subject.grade,"18")
+        XCTAssertEqual(subject.completedAt, Date(timeIntervalSince1970: 2000)); XCTAssertEqual(store.sessions.count,1)
+        XCTAssertFalse(ColorIDMigrationBackup.needsCompletionBackup(url))
+        let backups = try FileManager.default.contentsOfDirectory(at: folder.appendingPathComponent("Backups"), includingPropertiesForKeys: nil)
+        XCTAssertEqual(backups.count,1)
+        XCTAssertTrue(ColorIDMigrationBackup.needsCompletionBackup(backups[0].appendingPathComponent("Study.store")))
+    }
+}

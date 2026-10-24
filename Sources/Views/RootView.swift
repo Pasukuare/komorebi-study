@@ -242,7 +242,7 @@ struct SessionControls: View {
                 Label(store.actionTitle, systemImage: store.active != nil && store.active?.pausedAt == nil ? "pause.fill" : "play.fill")
                     .font(appTheme.typography.control)
                     .frame(maxWidth: .infinity).padding(.vertical, DesignSystem.Spacing.legacy6)
-            }.buttonStyle(StudyActionStyle()).disabled(store.active == nil && store.subjects.isEmpty)
+            }.buttonStyle(StudyActionStyle()).disabled(store.active == nil && store.activeSubjects.isEmpty)
             if let active = store.active {
                 Button(active.isBreak ? L10n.tr("Salta pausa") : L10n.tr("Termina e salva")) {
                     if active.isBreak { store.skipBreak() } else { store.finish(fromMenu: fromMenu) }
@@ -260,7 +260,7 @@ struct TimerSetup: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy14) {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy6) {
                 Text(L10n.tr("Materia")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
-                StudyDropdown(title: L10n.tr("Materia"), options: store.subjects.map { (Optional($0.id), $0.name) }, selection: Binding(get: { store.preparedSubject?.id }, set: { store.chooseSubject($0) })).frame(maxWidth: .infinity)
+                StudyDropdown(title: L10n.tr("Materia"), options: store.activeSubjects.map { (Optional($0.id), $0.name) }, selection: Binding(get: { store.preparedSubject?.id }, set: { store.chooseSubject($0) })).frame(maxWidth: .infinity)
                 if store.subjects.isEmpty { Text(L10n.tr("Aggiungi una materia per iniziare.")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary) }
             }
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.legacy6) {
@@ -484,7 +484,7 @@ struct OverviewView: View {
                         Spacer()
                         GoalEditButton().labelStyle(.iconOnly).help(L10n.tr("Modifica obiettivi"))
                     }
-                    LiveStudyTime { _ in GoalBar(title: L10n.tr("Questa settimana"), value: store.liveWeekly, goal: store.settings.weeklyGoal * 3600) }
+                    LiveStudyTime { _ in GoalBar(title: L10n.tr("Questa settimana"), value: store.weeklyGoalProgress, goal: store.settings.weeklyGoal * 3600) }
                 }
                 ViewThatFits(in: .horizontal) {
                     EqualHeightCardRow(spacing: DesignSystem.Spacing.lg) {
@@ -502,13 +502,13 @@ struct OverviewView: View {
             Text(store.active == nil ? L10n.tr("Sessione") : store.active?.subjectName ?? L10n.tr("Sessione"))
                 .font(appTheme.preservedTypography.editorTitle).fixedSize(horizontal: false, vertical: true)
             if store.active == nil {
-                StudyDropdown(title: L10n.tr("Materia"), options: store.subjects.map { (Optional($0.id), $0.name) }, selection: Binding(get: { store.preparedSubject?.id }, set: { store.chooseSubject($0) }))
+                StudyDropdown(title: L10n.tr("Materia"), options: store.activeSubjects.map { (Optional($0.id), $0.name) }, selection: Binding(get: { store.preparedSubject?.id }, set: { store.chooseSubject($0) }))
                 Label(store.preparedSummary, systemImage: "timer").font(appTheme.preservedTypography.callout).foregroundStyle(appTheme.palette.textSecondary)
                 HStack {
                     Button {
                         store.start(); if store.active != nil { openTimer() }
                     } label: { Label(L10n.tr("Inizia a studiare"), systemImage: "play.fill").padding(.vertical, DesignSystem.Spacing.xxs) }
-                        .buttonStyle(StudyActionStyle()).disabled(store.subjects.isEmpty)
+                        .buttonStyle(StudyActionStyle()).disabled(store.activeSubjects.isEmpty)
                     Button(L10n.tr("Configura"), action: openTimer)
                 }
             } else {

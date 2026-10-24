@@ -55,7 +55,32 @@ import AppKit
     }
     @Published var sessions: [StudySession] = []
     @Published var exams: [StudyExam] = []
-    @Published var subjects: [Subject] = []
+    @Published var subjects: [Subject] = [] { didSet { rebuildSubjectCatalog() } }
+    @Published private(set) var activeSubjects: [Subject] = []
+    @Published private(set) var completedSubjects: [Subject] = []
+    private(set) var completedSubjectIDs: Set<UUID> = []
+    private var subjectSignature: [String] = []
+    private(set) var subjectCatalogRevision = 0
+    private func rebuildSubjectCatalog() {
+        let signature = subjects.map { "\($0.id)|\($0.name)|\($0.icon)|\($0.color)|\($0.isCompleted)|\($0.completedAt?.timeIntervalSince1970 ?? 0)|\($0.weeklyGoal)" }
+        guard signature != subjectSignature else { return }
+        subjectSignature = signature; subjectCatalogRevision += 1
+        activeSubjects = subjects.filter { !$0.isCompleted }
+        completedSubjects = subjects.filter(\.isCompleted).sorted {
+            if $0.completedAt != $1.completedAt { return ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+        completedSubjectIDs = Set(completedSubjects.map(\.id))
+        if let id = nextSubject, !activeSubjects.contains(where: { $0.id == id }) { nextSubject = nil }
+        if let id = settings.lastSubject, !activeSubjects.contains(where: { $0.id == id }) { settings.lastSubject = activeSubjects.first?.id }
+    }
+    private static let unassignedSubjectID = UUID()
+    var weeklyGoalProgress: Double {
+        let saved = sessions.reduce(0.0) { sum, session in
+            sum + (completedSubjectIDs.contains(session.subjectID ?? Self.unassignedSubjectID) ? 0 : contribution(session, in: week))
+        }
+        return saved + (completedSubjectIDs.contains(active?.subjectID ?? Self.unassignedSubjectID) ? 0 : activeContribution(in: week))
+    }
     @Published var menuCompletion = false
     @Published var completionPulse: UUID?
     @Published var completed: StudySession?
@@ -128,6 +153,9 @@ import AppKit
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             configuration = ModelConfiguration(schema: schema, url: directory.appendingPathComponent("Study.store"))
         }
+        if !inMemory, ColorIDMigrationBackup.needsCompletionBackup(configuration.url) {
+            try ColorIDMigrationBackup.create(archiveURL: configuration.url, preferences: defaults.dictionaryRepresentation(), label: "SubjectCompletion")
+        }
         container = try ModelContainer(for: schema, configurations: [configuration])
         context = ModelContext(container)
         var loadedSettings = defaults.data(forKey: "settings").flatMap { try? JSONDecoder().decode(UserSettings.self, from: $0) } ?? UserSettings()
@@ -138,6 +166,10 @@ import AppKit
         cycles = defaults.integer(forKey: "cycles")
         nextSubject = defaults.string(forKey: "nextSubject").flatMap(UUID.init(uuidString:))
         nextMode = defaults.string(forKey: "nextMode").flatMap(TimerMode.init(rawValue:))
+        let completionSubjects = try context.fetch(FetchDescriptor<Subject>())
+        if SubjectCompletionMigration.apply(subjects: completionSubjects, sessions: try context.fetch(FetchDescriptor<StudySession>())) > 0 {
+            do { try context.save() } catch { context.rollback(); throw error }
+        }
         try migrateSubjectColorIDs(archiveURL: inMemory ? nil : configuration.url)
         refresh()
         if subjects.isEmpty && !defaults.bool(forKey: "seeded") {
@@ -202,7 +234,7 @@ import AppKit
         do { try context.save(); refresh(); return true } catch { self.error = L10n.errorMessage(error); return false }
     }
     var preparedSubject: Subject? {
-        subjects.first { $0.id == (nextSubject ?? settings.lastSubject) } ?? subjects.first
+        activeSubjects.first { $0.id == (nextSubject ?? settings.lastSubject) } ?? activeSubjects.first
     }
     var preparedMode: TimerMode { nextMode ?? settings.preferredMode }
     var preparedTarget: Double? {

@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import UniformTypeIdentifiers
 import SQLite3
+import SwiftData
 
 struct SessionRecord: Codable {
     var id: UUID; var start: Date; var end: Date; var duration: Double; var subjectID: UUID?; var subject: String; var mode: String; var pause: Double; var note: String; var activityData: Data? = nil
@@ -11,11 +12,15 @@ struct SessionRecord: Codable {
 struct SubjectRecord: Codable {
     var id: UUID; var name: String; var icon: String; var color: String; var weeklyGoal: Double
     var completed: Bool? = nil; var grade: String? = nil
-    init(_ s: Subject) { id = s.id; name = s.name; icon = s.icon; color = SubjectColorID.canonical(s.color); weeklyGoal = s.weeklyGoal; completed = s.completed; grade = s.grade }
+    var gradeValue: Int? = nil; var gradeHonors: Bool? = nil; var gradeNote: String? = nil
+    var completedAt: Date? = nil; var completionVersion: Int? = nil
+    init(_ s: Subject) { id = s.id; name = s.name; icon = s.icon; color = SubjectColorID.canonical(s.color); weeklyGoal = s.weeklyGoal; completed = s.completed; grade = s.grade; gradeValue = s.gradeValue; gradeHonors = s.gradeHonors; gradeNote = s.gradeNote; completedAt = s.completedAt; completionVersion = s.completionVersion }
     var model: Subject {
         let subject = Subject(name: name, icon: icon, color: color, weeklyGoal: weeklyGoal)
         subject.id = id
         subject.completed = completed; subject.grade = grade
+        subject.gradeValue = gradeValue; subject.gradeHonors = gradeHonors; subject.gradeNote = gradeNote
+        subject.completedAt = completedAt; subject.completionVersion = completionVersion
         return subject
     }
 }
@@ -51,6 +56,11 @@ struct Backup: Codable { var version = 1; var settings: UserSettings; var subjec
             guard backup.version == 1, (backup.exams ?? []).allSatisfy({ !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }), backup.sessions.allSatisfy({ $0.duration.isFinite && $0.pause.isFinite && $0.duration >= 0 && $0.pause >= 0 && $0.end >= $0.start && $0.duration + $0.pause <= $0.end.timeIntervalSince($0.start) + 2 }), backup.subjects.allSatisfy({ !$0.name.isEmpty && $0.weeklyGoal.isFinite && $0.weeklyGoal >= 0 }), backup.settings.dailyGoal > 0, backup.settings.weeklyGoal > 0 else { throw CocoaError(.fileReadCorruptFile) }
             let alert = NSAlert(); alert.messageText = L10n.tr("Importa backup locale"); alert.informativeText = L10n.tr("Verranno aggiunte le sessioni e le materie mancanti. I dati esistenti saranno conservati. Le impostazioni verranno aggiornate."); alert.addButton(withTitle: L10n.tr("Importa")); alert.addButton(withTitle: L10n.tr("Annulla"))
             guard alert.runModal() == .alertFirstButtonReturn else { return }
+            if backup.subjects.contains(where: { $0.completionVersion == nil }),
+               let archive = context.container.configurations.first?.url,
+               FileManager.default.fileExists(atPath: archive.path) {
+                try ColorIDMigrationBackup.create(archiveURL: archive, preferences: ["settings": try JSONEncoder().encode(settings)], label: "SubjectImport")
+            }
             var subjectIDs = Set(subjects.map(\.id)); var sessionIDs = Set(sessions.map(\.id))
             for s in backup.subjects where subjectIDs.insert(s.id).inserted {
                 context.insert(s.model)
@@ -58,6 +68,7 @@ struct Backup: Codable { var version = 1; var settings: UserSettings; var subjec
             for s in backup.sessions where sessionIDs.insert(s.id).inserted { context.insert(s.model) }
             var examIDs = Set(exams.map(\.id))
             for exam in backup.exams ?? [] where examIDs.insert(exam.id).inserted { context.insert(exam.model) }
+            SubjectCompletionMigration.apply(subjects: try context.fetch(FetchDescriptor<Subject>()), sessions: try context.fetch(FetchDescriptor<StudySession>()))
             do { try context.save() } catch { context.rollback(); throw error }
             settings = backup.settings; settings.onboarded = true; refresh()
         } catch { self.error = L10n.tr("Backup non importato: %@" , String(describing: L10n.errorMessage(error))) }
@@ -66,10 +77,10 @@ struct Backup: Codable { var version = 1; var settings: UserSettings; var subjec
 
 /// Uses macOS SQLite, including its WAL-aware backup API; no third-party dependency.
 enum ColorIDMigrationBackup {
-    @discardableResult static func create(archiveURL: URL, preferences: [String: Any]) throws -> URL {
+    @discardableResult static func create(archiveURL: URL, preferences: [String: Any], label: String = "ColorIDs") throws -> URL {
         let stamp = Date().ISO8601Format().replacingOccurrences(of: ":", with: "-")
         let folder = archiveURL.deletingLastPathComponent().appendingPathComponent("Backups", isDirectory: true)
-            .appendingPathComponent("ColorIDs-\(stamp)-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("\(label)-\(stamp)-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var source: OpaquePointer?
         var destination: OpaquePointer?
@@ -95,5 +106,39 @@ enum ColorIDMigrationBackup {
         let data = try PropertyListSerialization.data(fromPropertyList: preferences, format: .binary, options: 0)
         try data.write(to: folder.appendingPathComponent("preferences.plist"), options: .atomic)
         return folder
+    }
+}
+
+/// Additive, idempotent migration. Never edits session records or the legacy grade string.
+@MainActor enum SubjectCompletionMigration {
+    @discardableResult static func apply(subjects: [Subject], sessions: [StudySession]) -> Int {
+        var changed = 0
+        let lastDates = Dictionary(grouping: sessions.compactMap { session in session.subjectID.map { ($0, session.endDate) } }, by: { $0.0 })
+            .mapValues { $0.map(\.1).max()! }
+        for subject in subjects where subject.completionVersion == nil {
+            if let raw = subject.grade, !raw.isEmpty {
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty, trimmed.allSatisfy({ "0123456789".contains($0) }), let value = Int(trimmed), (18...30).contains(value) {
+                    subject.gradeValue = subject.gradeValue ?? value
+                } else if subject.gradeNote == nil { subject.gradeNote = raw }
+            }
+            if subject.isCompleted, subject.completedAt == nil { subject.completedAt = lastDates[subject.id] }
+            subject.completionVersion = 1; changed += 1
+        }
+        return changed
+    }
+}
+
+extension ColorIDMigrationBackup {
+    /// Run before ModelContainer: adding columns can itself migrate a SwiftData store.
+    static func needsCompletionBackup(_ url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { if let db { sqlite3_close(db) }; return true }
+        defer { sqlite3_close(db) }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT 1 FROM ZSUBJECT WHERE ZCOMPLETIONVERSION IS NULL LIMIT 1", -1, &statement, nil) == SQLITE_OK else { return true }
+        defer { sqlite3_finalize(statement) }
+        return sqlite3_step(statement) == SQLITE_ROW
     }
 }

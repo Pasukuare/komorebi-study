@@ -153,8 +153,8 @@ struct StatisticsView: View {
                 Card {
                     HStack { Text(L10n.tr("Obiettivo settimanale complessivo")).font(appTheme.preservedTypography.title3); Spacer(); GoalEditButton() }
                     LiveStudyTime { _ in
-                    GoalBar(title: L10n.tr("Settimana corrente · tutte le materie"), value: store.liveWeekly, goal: store.settings.weeklyGoal * 3600)
-                    Text(store.liveWeekly >= store.settings.weeklyGoal * 3600 ? L10n.tr("Obiettivo raggiunto") : L10n.tr("Mancano %@" , String(describing: durationText(store.settings.weeklyGoal * 3600 - store.liveWeekly)))).foregroundStyle(appTheme.palette.textSecondary)
+                    GoalBar(title: L10n.tr("Settimana corrente · tutte le materie"), value: store.weeklyGoalProgress, goal: store.settings.weeklyGoal * 3600)
+                    Text(store.weeklyGoalProgress >= store.settings.weeklyGoal * 3600 ? L10n.tr("Obiettivo raggiunto") : L10n.tr("Mancano %@" , String(describing: durationText(store.settings.weeklyGoal * 3600 - store.weeklyGoalProgress)))).foregroundStyle(appTheme.palette.textSecondary)
                     }
                 }
             }.padding(DesignSystem.Layout.contentPadding).frame(maxWidth: DesignSystem.Layout.contentMaximum).frame(maxWidth: .infinity)

@@ -40,13 +40,18 @@ enum TimerMode: String, Codable, CaseIterable, Identifiable {
     var weeklyGoal: Double
     // Optional storage supports lightweight migration: existing subjects remain unfinished.
     var completed: Bool? = nil
-    var grade: String? = nil
+    var grade: String? = nil // Immutable legacy text retained for lossless migration/backup.
+    var gradeValue: Int? = nil
+    var gradeHonors: Bool? = nil
+    var gradeNote: String? = nil
+    var completedAt: Date? = nil
+    var completionVersion: Int? = nil
     var isCompleted: Bool {
         get { completed ?? false }
         set { completed = newValue }
     }
     init(name: String, icon: String = "leaf", color: String = SubjectColorID.defaultID, weeklyGoal: Double = 5) {
-        id = UUID(); self.name = name; self.icon = icon; self.color = SubjectColorID.canonical(color); self.weeklyGoal = weeklyGoal
+        id = UUID(); self.name = name; self.icon = icon; self.color = SubjectColorID.canonical(color); self.weeklyGoal = weeklyGoal; self.completionVersion = 1
     }
 }
 @Model final class StudySession {
@@ -87,6 +92,7 @@ enum PersonalPhraseSlot: String, CaseIterable, Identifiable {
     }
 }
 struct UserSettings: Codable, Equatable {
+    var completedSubjectsExpanded: Bool?
     var personalPhrases: [String: String]?
     func personalPhrase(for slot: PersonalPhraseSlot) -> String? {
         let text = personalPhrases?[slot.rawValue]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
