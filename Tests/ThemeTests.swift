@@ -66,7 +66,6 @@ import AppKit
                 (resolved.palette.errorSurface, DesignSystem.Palette.errorSurface),
                 (resolved.palette.interval, DesignSystem.Palette.interval),
                 (resolved.palette.action, DesignSystem.Palette.action),
-                (resolved.palette.actionHover, DesignSystem.Palette.actionHover),
                 (resolved.palette.onAction, DesignSystem.Palette.onAction),
                 (resolved.palette.light, DesignSystem.Palette.light),
                 (resolved.palette.spotlight, DesignSystem.Palette.light),

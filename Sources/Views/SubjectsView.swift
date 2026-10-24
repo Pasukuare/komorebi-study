@@ -31,6 +31,10 @@ struct SubjectsView: View {
                             if store.save() { name = "" }
                         }.buttonStyle(ResponsiveButtonStyle(prominent: true)).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
+                    if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(L10n.tr("Inserisci un nome per aggiungere la materia"))
+                            .font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                    }
                 }
                 ForEach(store.subjects) { s in
                     Card(identity: s.id.uuidString + s.name + s.icon + s.color + String(s.weeklyGoal)) {

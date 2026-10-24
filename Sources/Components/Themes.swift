@@ -12,6 +12,7 @@ struct ThemePalette {
     var sidebarSelectedText: Color
     var controlBorder: Color
     var actionPressed: Color?
+    var buttonDestructiveInk: Color
     var disabledAction: Color
     var onDisabledAction: Color
     var disabledText: Color?
@@ -55,6 +56,7 @@ struct ThemePalette {
         sidebarSelection = mode.resolve(DesignSystem.Palette.accentSurface)
         controlBorder = mode.resolve(DesignSystem.Palette.border)
         actionPressed = nil
+        buttonDestructiveInk = mode.resolve(DesignSystem.PreservedAppearance.destructiveInk)
         disabledAction = mode.resolve(DesignSystem.Palette.action)
         onDisabledAction = mode.resolve(DesignSystem.Palette.onAction)
         disabledText = nil
@@ -443,6 +445,24 @@ struct ThemeVariant {
         motion = ThemeMotion(mode: mode)
         shadows = ThemeShadows(mode: mode)
         subjectColors = DesignSystem.PreservedColors.subjectChoices.map { .init(id: $0.id, name: $0.name, ink: mode.resolve($0.ink)) } + SeasonalSubjectColors.choices(mode: mode)
+        resolveButtonTokens(mode: mode)
+    }
+    /// Calculated when building a theme variant, never in a button body or pointer update.
+    mutating func resolveButtonTokens(mode: ThemeMode) {
+        // A single semantic treatment for every disabled button; never inherit an accent fill.
+        palette.disabledAction = palette.surface
+        palette.onDisabledAction = palette.textTertiary
+        palette.disabledText = palette.textTertiary
+        palette.buttonDestructiveInk = ThemeContrast.accessibleInk(appearance.destructiveInk,
+            mode: mode, surfaces: [palette.background, palette.surface, palette.elevatedSurface],
+            spotlight: mode == .dark ? palette.spotlight : nil, tintOpacity: appearance.opacity0_16)
+        let hoverForeground = ThemeContrast.composite(palette.spotlight, on: palette.onAction, opacity: mode == .dark ? DesignSystem.Interaction.spotlightOpacity : 0)
+        let hoverFill = ThemeContrast.composite(palette.spotlight, on: palette.actionHover, opacity: mode == .dark ? DesignSystem.Interaction.spotlightOpacity : 0)
+        if ThemeContrast.ratio(hoverForeground, hoverFill) < 4.5 {
+            palette.actionHover = ThemeContrast.accessibleInk(palette.actionHover,
+                mode: ThemeContrast.luminance(ThemeContrast.rgb(palette.onAction)) > 0.5 ? .light : .dark,
+                surfaces: [palette.onAction], spotlight: mode == .dark ? palette.spotlight : nil)
+        }
     }
 }
 struct ThemePackage: Identifiable {
@@ -466,8 +486,9 @@ struct ResolvedTheme {
     init(package: ThemePackage, mode: ThemeMode, optionValues: [String: Bool] = [:], date: Date = Date()) {
         self.package = package; self.mode = mode; self.optionValues = optionValues
         let base = mode == .dark ? package.dark : package.light
-        self.variant = package.behavior.supportsSeason && optionValues[ThemeOptionID.followSeason] == true
+        let resolved = package.behavior.supportsSeason && optionValues[ThemeOptionID.followSeason] == true
             ? ThemeRegistry.seasonalVariant(package: package, mode: mode, season: .current(at: date)) : base
+        self.variant = resolved
     }
     func option(_ id: String) -> Bool { optionValues[id] ?? package.options.first { $0.id == id }?.defaultValue ?? true }
     var decorationsEnabled: Bool { option(ThemeOptionID.decorations) }
@@ -858,6 +879,7 @@ enum HalloweenTheme {
         v.preservedTypography.pageTitle = pirata(30)
         v.preservedTypography.title2 = fell(17)
         v.preservedTypography.title3 = fell(15)
+        v.resolveButtonTokens(mode: mode)
         return v
     }
 }
@@ -955,6 +977,7 @@ enum SeasonalAccent {
         v.palette.timerGradientStart = hover; v.palette.timerGradientEnd = fill
         v.palette.timerTrack = ink.opacity(0.07)
         v.palette.timerBorder = ink.opacity(0.12); v.palette.timerDivider = ink.opacity(0.10)
+        v.resolveButtonTokens(mode: mode)
         return v
     }
 }

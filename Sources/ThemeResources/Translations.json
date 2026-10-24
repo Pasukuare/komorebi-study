@@ -443,5 +443,6 @@
   "Timer": "Timer",
   "Esame oggi": "Exam today",
   "Esame domani": "Exam tomorrow",
-  "Esame tra %@ giorni": "Exam in %@ days"
+  "Esame tra %@ giorni": "Exam in %@ days",
+  "Inserisci un nome per aggiungere la materia": "Enter a name to add the subject"
 }
