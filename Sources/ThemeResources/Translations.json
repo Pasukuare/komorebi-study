@@ -561,5 +561,11 @@
   "0,2 corrisponde a 1/5 del tempo di studio.": "0.2 means one fifth of your study time.",
   "Pausa minima": "Minimum break",
   "Pausa massima": "Maximum break",
-  "Minuti": "Minutes"
+  "Minuti": "Minutes",
+  "La materia è collegata all’unità di studio.": "The subject is linked to the study unit.",
+  "Avanzamento per unità": "Unit progress",
+  "Totali di tutte le unità; media sulle unità finite con tempo registrato.": "All-time unit totals; average for finished units with recorded time.",
+  "%@ di %@ unità finite": "%@ of %@ units finished",
+  "Tempo medio per unità: %@": "Average time per unit: %@",
+  "Mancano %@ unità, circa %@ ore": "%@ units remaining, about %@ hours"
 }

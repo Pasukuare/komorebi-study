@@ -30,6 +30,12 @@ import AppKit
     @Published var selectedUnitID: UUID?
     private(set) var unitsBySubject: [UUID: [StudyUnit]] = [:]
     private(set) var unitSeconds: [UUID: Double] = [:]
+    struct UnitSummary {
+        var total = 0; var finished = 0
+        var averageMinutes: Double?
+        var remaining = 0; var remainingMinutes: Double?
+    }
+    private(set) var unitSummaries: [UUID: UnitSummary] = [:]
     private(set) var unitEstimates: [UUID: Double] = [:]
     private var unitCacheSignature = ""
     private(set) var unitCacheRevision = 0
@@ -617,7 +623,7 @@ extension SavedStudyTiming {
         unitCacheSignature = signature; unitCacheRevision += 1
         unitsBySubject = Dictionary(grouping: units.sorted { $0.order == $1.order ? $0.id.uuidString < $1.id.uuidString : $0.order < $1.order }, by: \.subjectID)
         unitSeconds = sessions.reduce(into: [:]) { if let id = $1.unitID { $0[id,default:0] += $1.duration } }
-        var estimates: [UUID:Double] = [:]
+        var estimates: [UUID:Double] = [:], automatic: [UUID:Double] = [:]
         for list in unitsBySubject.values {
             let groups = Dictionary(grouping:list.filter { $0.unitState == .finished },by: \.kind)
             // Build each median once per subject/type, not once per target unit.
@@ -630,13 +636,26 @@ extension SavedStudyTiming {
                 medians[kind] = UnitRules.estimate(samples:samples,pageCount:kind == StudyUnitKind.pages.rawValue ? 1 : nil)
             }
             for unit in list {
-                if let manual = unit.estimatedMinutes, manual.isFinite, manual > 0 { estimates[unit.id] = manual; continue }
                 if unit.unitKind == .pages {
-                    if let pages = unit.pageCount, let rate = medians[unit.kind] { estimates[unit.id] = rate * Double(pages) }
-                } else { estimates[unit.id] = medians[unit.kind] }
+                    if let pages = unit.pageCount, let rate = medians[unit.kind] { automatic[unit.id] = rate * Double(pages) }
+                } else { automatic[unit.id] = medians[unit.kind] }
+                if let manual = unit.estimatedMinutes, manual.isFinite, manual > 0 { estimates[unit.id] = manual }
+                else { estimates[unit.id] = automatic[unit.id] }
             }
         }
         unitEstimates = estimates
+        unitSummaries = unitsBySubject.mapValues { list in
+            let finished = list.filter { $0.unitState == .finished }
+            let measured = finished.compactMap { unitSeconds[$0.id] }.filter { $0 > 0 }
+            let remaining = list.filter { $0.unitState != .finished }
+            let known = remaining.compactMap { unit -> Double? in
+                guard let estimate = automatic[unit.id] else { return nil }
+                return max(0,estimate - (unitSeconds[unit.id] ?? 0)/60)
+            }
+            return UnitSummary(total:list.count,finished:finished.count,
+                averageMinutes:measured.isEmpty ? nil : measured.reduce(0,+)/Double(measured.count)/60,
+                remaining:remaining.count,remainingMinutes:!remaining.isEmpty && known.count == remaining.count ? known.reduce(0,+) : nil)
+        }
     }
     func addUnits(subject: Subject, seeds: [UnitSeed], kind: StudyUnitKind) {
         let first = (unitsBySubject[subject.id]?.map(\.order).max() ?? -1)+1
@@ -675,10 +694,11 @@ extension SavedStudyTiming {
                 }
             }
             session.startDate = min(session.startDate,a.start); session.endDate = max(session.endDate,end)
-            session.duration += seconds
+            let recorded = UnitRules.mergedIntervals(oldSpans + spans)
+            session.duration = recorded.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }
             session.pauseDuration = max(0,session.endDate.timeIntervalSince(session.startDate)-session.duration)
             session.unitID = unitID; session.unitTitle = a.unitTitle ?? unit?.title; session.unitFinished = finished
-            session.activityData = try? JSONEncoder().encode(oldSpans + spans)
+            session.activityData = try? JSONEncoder().encode(recorded)
             if existing == nil { context.insert(session) }
         } else if let existing { existing.unitFinished = finished }
         unit?.state = finished ? StudyUnitState.finished.rawValue : StudyUnitState.inProgress.rawValue

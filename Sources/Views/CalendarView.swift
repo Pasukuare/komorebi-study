@@ -81,7 +81,12 @@ struct SessionRow: View {
     var body: some View {
         HStack(spacing: DesignSystem.Spacing.legacy14) {
             SubjectIconTile(symbol: store.subjects.first { $0.id == session.subjectID }?.icon ?? "book.closed", color: appTheme.subjectColor(store.subjects.first { $0.id == session.subjectID }?.color ?? "Salvia"))
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) { Text(verbatim: session.subjectName).textCase(nil).font(appTheme.preservedTypography.headline); Text(session.note.isEmpty ? TimerMode.displayName(for: session.timerMode) : session.note).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary).lineLimit(2) }
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) { Text(verbatim: session.subjectName).textCase(nil).font(appTheme.preservedTypography.headline); if let title = session.unitTitle {
+                    Text(verbatim:title + " · " + (session.unitFinished == true ? L10n.tr("Finita") : L10n.tr("In corso"))).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary).lineLimit(2)
+                    if !session.note.isEmpty && session.note != title { Text(verbatim:session.note).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary).lineLimit(2) }
+                } else {
+                    Text(session.note.isEmpty ? TimerMode.displayName(for: session.timerMode) : session.note).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary).lineLimit(2)
+                } }
             Spacer(); VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xxs) { Text(durationText(session.duration)).monospacedDigit(); Text(session.startDate, format: .dateTime.day().month().hour().minute()).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary) }
         }.padding(.vertical, DesignSystem.Spacing.xs)
     }

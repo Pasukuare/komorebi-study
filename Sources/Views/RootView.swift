@@ -756,12 +756,15 @@ struct UnitSelectionView: View {
     @EnvironmentObject private var store: StudyStore
     @Environment(\.studyTheme) private var theme
     var next = false
+    @State private var adding = false
     private var choices: [StudyUnit] { (store.preparedSubject.flatMap { store.unitsBySubject[$0.id] } ?? []).filter { $0.unitState != .finished } }
     var body: some View {
         VStack(alignment:.leading,spacing:DesignSystem.Spacing.xs) {
             if choices.isEmpty {
                 Text(L10n.tr("Nessuna unità da studiare")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
-                Button(L10n.tr("Aggiungi unità")) { store.openSubjects = true }
+                if store.preparedSubject != nil {
+                    Button(L10n.tr("Aggiungi unità")) { adding = true }
+                } else { NoActiveSubjects() }
             } else {
                 if next, let unit=store.preparedUnit { Text(L10n.tr("Prossima: %@",unit.title)).font(theme.typography.small).fixedSize(horizontal:false,vertical:true) }
                 StudyDropdown(title:L10n.tr("Unità di studio"),options:choices.map { (Optional($0.id),$0.title) },selection:Binding(get:{ store.preparedUnit?.id },set:{ store.selectedUnitID=$0 }))
@@ -769,6 +772,8 @@ struct UnitSelectionView: View {
                     Text(L10n.tr("Stima: %@",durationText(estimate*60))).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
                 }
             }
+        }.sheet(isPresented:$adding) {
+            if let subject=store.preparedSubject { StudyUnitEditor(subject:subject) }
         }
     }
 }

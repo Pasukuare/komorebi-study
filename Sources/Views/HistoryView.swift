@@ -17,7 +17,7 @@ struct HistoryView: View {
         let fromLimit = calendar.startOfDay(for: from)
         let toLimit = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: to)) ?? to
         return store.sessions.filter { s in
-            (search.isEmpty || s.note.localizedCaseInsensitiveContains(search) || s.subjectName.localizedCaseInsensitiveContains(search)) && subject.matches(s) && (mode == "Tutte" || s.timerMode == mode) && s.duration >= minMinutes * 60 && (!dateFilter || (s.startDate >= fromLimit && s.startDate < toLimit))
+            (search.isEmpty || s.note.localizedCaseInsensitiveContains(search) || (s.unitTitle?.localizedCaseInsensitiveContains(search) ?? false) || s.subjectName.localizedCaseInsensitiveContains(search)) && subject.matches(s) && (mode == "Tutte" || s.timerMode == mode) && s.duration >= minMinutes * 60 && (!dateFilter || (s.startDate >= fromLimit && s.startDate < toLimit))
         }
     }
     var body: some View {
@@ -72,7 +72,8 @@ struct SessionEditor: View {
             DatePicker(L10n.tr("Fine"), selection: $end).interactiveHover()
             StudyNumberField(title: L10n.tr("Minuti studiati"), value: $minutes)
             StudyNumberField(title: L10n.tr("Minuti in pausa"), value: $pause)
-            StudyDropdown(title: L10n.tr("Materia"), options: store.editingSubjectChoices(currentID: session.subjectID, currentName: session.subjectName), selection: $subjectID)
+            StudyDropdown(title: L10n.tr("Materia"), options: store.editingSubjectChoices(currentID: session.subjectID, currentName: session.subjectName), selection: $subjectID).disabled(session.unitID != nil)
+            if session.unitID != nil { Text(L10n.tr("La materia è collegata all’unità di studio.")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary) }
             StudyTextEntry(L10n.tr("Note"), text: $note, axis: .vertical).textFieldStyle(StudyTextFieldStyle()).interactiveHover(textEntry: true).lineLimit(3...6)
             if !valid { Text(L10n.tr("Durata e pause devono rientrare tra inizio e fine.")).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.appearance.destructiveInk) }
             HStack { Button(L10n.tr("Annulla")) { dismiss() }; Spacer(); Button(L10n.tr("Salva")) {

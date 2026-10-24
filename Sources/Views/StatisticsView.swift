@@ -127,6 +127,21 @@ struct StatisticsView: View {
                     }.padding(.vertical, DesignSystem.Spacing.xxs)
                 }
                 }
+                if !store.units.isEmpty {
+                    Card(hoverEnabled:false) {
+                        Text(L10n.tr("Avanzamento per unità")).font(appTheme.typography.heading)
+                        Text(L10n.tr("Totali di tutte le unità; media sulle unità finite con tempo registrato.")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                        ForEach(store.subjects.filter { (subjectID == nil || subjectID == $0.id) && store.unitSummaries[$0.id] != nil }) { subject in
+                            if let summary = store.unitSummaries[subject.id] {
+                                VStack(alignment:.leading,spacing:DesignSystem.Spacing.xs) {
+                                    Text(verbatim:subject.name).font(appTheme.typography.small)
+                                    Text(L10n.tr("%@ di %@ unità finite",String(summary.finished),String(summary.total))).font(appTheme.typography.caption)
+                                    if let average=summary.averageMinutes { Text(L10n.tr("Tempo medio per unità: %@",durationText(average*60))).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary) }
+                                }
+                            }
+                        }
+                    }
+                }
                 Card {
                     HStack { Text(bucketUnit == .month ? L10n.tr("Ore per mese") : L10n.tr("Ore per giorno")).font(appTheme.preservedTypography.title3); Spacer(); Text(L10n.tr("Passa sulle barre o selezionale per i dettagli")).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary) }
                     if entries.isEmpty {
@@ -336,6 +351,9 @@ struct ProjectionCard: View {
                         selection: Binding(get: { self.exam?.id }, set: { selectedID = $0; editing = false }))
                 } else {
                     Text(verbatim: store.examDisplayTitle(exam)).font(theme.typography.small).foregroundStyle(theme.palette.textSecondary)
+                }
+                if let id=exam.subjectID, let summary=store.unitSummaries[id], let minutes=summary.remainingMinutes {
+                    Text(L10n.tr("Mancano %@ unità, circa %@ ore",String(summary.remaining),ProjectionText.number(minutes/60))).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
                 }
                 if editing || store.projections[exam.id] == nil {
                     ProjectionTargetEditor(exam: exam, cancel: store.projections[exam.id] == nil ? nil : { editing = false }, saved: { editing = false }).id(exam.id)

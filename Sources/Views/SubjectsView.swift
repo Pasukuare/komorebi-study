@@ -533,7 +533,14 @@ struct StudyUnitsBatchEditor: View {
     @State private var block = 15.0
     private var seeds: [UnitSeed] {
         let prefix = prefix.isEmpty ? kind.title + " " : prefix
-        return kind == .pages ? UnitRules.pages(from:Int(first),through:Int(last),block:Int(block),prefix:prefix) : UnitRules.numbered(from:Int(first),through:Int(last),prefix:prefix)
+        // Direct numeric edits can be temporarily fractional or out of range.
+        // Exact conversion rejects them without a floating-point-to-Int trap.
+        guard let first = Int(exactly:first), let last = Int(exactly:last) else { return [] }
+        if kind == .pages {
+            guard let block = Int(exactly:block) else { return [] }
+            return UnitRules.pages(from:first,through:last,block:block,prefix:prefix)
+        }
+        return UnitRules.numbered(from:first,through:last,prefix:prefix)
     }
     var body: some View {
         VStack(alignment:.leading,spacing:DesignSystem.Spacing.md) {

@@ -182,3 +182,134 @@ extension StudyUnitTests {
         XCTAssertEqual(restored.unitID,unit.id); XCTAssertEqual(restored.unitEstimate,20)
     }
 }
+
+extension StudyUnitTests {
+    func testEstimatesArePerSubjectAndTypeAndProjectionDoesNotInventHours() throws {
+        let s=try store(), a=try XCTUnwrap(s.subjects.first)
+        let b=Subject(name:"Libro",color:"autunno.zucca"), completed=Subject(name:"Conclusa")
+        completed.isCompleted=true; s.context.insert(b); s.context.insert(completed)
+        let end=Date().addingTimeInterval(-86400)
+        for (index,minutes) in [20.0,40,60].enumerated() {
+            let unit=StudyUnit(subjectID:a.id,title:"Lezione \(index+1)",order:index)
+            unit.state=StudyUnitState.finished.rawValue; s.context.insert(unit)
+            let session=StudySession(start:end.addingTimeInterval(-minutes*60),end:end,duration:minutes*60,subjectID:a.id,subjectName:a.name,mode:TimerMode.unit.rawValue,pause:0)
+            session.unitID=unit.id; session.unitTitle=unit.title; session.unitFinished=true; s.context.insert(session)
+            let pages=StudyUnit(subjectID:b.id,title:"Pagine \(index)",kind:.pages,order:index,firstPage:1,lastPage:10)
+            pages.state=StudyUnitState.finished.rawValue; s.context.insert(pages)
+            let reading=StudySession(start:end.addingTimeInterval(-minutes*60),end:end,duration:minutes*60,subjectID:b.id,subjectName:b.name,mode:TimerMode.unit.rawValue,pause:0)
+            reading.unitID=pages.id; s.context.insert(reading)
+        }
+        let next=StudyUnit(subjectID:a.id,title:"Lezione 4",order:3)
+        let pageTarget=StudyUnit(subjectID:b.id,title:"Pagine 31–45",kind:.pages,order:3,firstPage:31,lastPage:45)
+        let otherKind=StudyUnit(subjectID:a.id,title:"Capitolo",kind:.chapter,order:4,estimatedMinutes:50)
+        s.context.insert(next); s.context.insert(pageTarget); s.context.insert(otherKind); XCTAssertTrue(s.save())
+        XCTAssertEqual(s.unitEstimates[next.id],40); XCTAssertEqual(s.unitEstimates[pageTarget.id],60)
+        XCTAssertEqual(s.unitSummaries[a.id]?.finished,3); XCTAssertEqual(s.unitSummaries[a.id]?.averageMinutes,40)
+        XCTAssertNil(s.unitSummaries[a.id]?.remainingMinutes,"Manual estimates do not fabricate automatic evidence for another kind")
+        s.deleteUnit(otherKind)
+        XCTAssertEqual(s.unitSummaries[a.id]?.remainingMinutes,40)
+        XCTAssertEqual(s.unitSummaries[b.id]?.remainingMinutes,60)
+        XCTAssertFalse(s.activeSubjects.contains { $0.id == completed.id })
+        let revision=s.unitCacheRevision
+        for _ in 0..<1000 { _ = s.unitSummaries[a.id]; _ = s.unitEstimates[next.id] }
+        XCTAssertEqual(s.unitCacheRevision,revision)
+        next.state=StudyUnitState.finished.rawValue; XCTAssertTrue(s.save())
+        XCTAssertEqual(s.unitSummaries[a.id]?.finished,4); XCTAssertNil(s.unitSummaries[a.id]?.remainingMinutes)
+    }
+    func testCumulativeSessionKeepsMidnightAndPauseAllocation() throws {
+        let s=try store(), subject=try XCTUnwrap(s.subjects.first)
+        let unit=StudyUnit(subjectID:subject.id,title:"Unità lunga")
+        s.context.insert(unit); XCTAssertTrue(s.save())
+        let midnight=Calendar.current.startOfDay(for:Date()).addingTimeInterval(-86400)
+        let start=midnight.addingTimeInterval(-1800), end=midnight.addingTimeInterval(1800)
+        s.active=ActiveTimer(start:start,target:nil,subjectID:subject.id,subjectName:subject.name,mode:.unit,unitID:unit.id,unitTitle:unit.title)
+        s.active?.pause(at:midnight.addingTimeInterval(-600)); s.active?.resume(at:midnight.addingTimeInterval(600))
+        s.finishUnit(finished:false,at:end)
+        let resumed=midnight.addingTimeInterval(86400+600)
+        s.active=ActiveTimer(start:resumed,target:nil,subjectID:subject.id,subjectName:subject.name,mode:.unit,unitID:unit.id,unitTitle:unit.title)
+        s.finishUnit(finished:true,at:resumed.addingTimeInterval(600))
+        let session=try XCTUnwrap(s.sessions.first); XCTAssertEqual(s.sessions.count,1); XCTAssertEqual(session.duration,3000)
+        let yesterday=DateInterval(start:midnight,end:midnight.addingTimeInterval(86400))
+        XCTAssertEqual(s.contribution(session,in:yesterday),1200,accuracy:0.001)
+        XCTAssertEqual(s.contribution(session,in:DateInterval(start:midnight.addingTimeInterval(-86400),end:midnight)),1200,accuracy:0.001)
+        XCTAssertEqual(s.contribution(session,in:DateInterval(start:resumed,end:resumed.addingTimeInterval(600))),600,accuracy:0.001)
+    }
+}
+
+extension StudyUnitTests {
+    func testIntegratedScreensRenderWithLessonsPagesAndCompletedSubject() throws {
+        try ThemeFonts.register()
+        let s=try store(), a=try XCTUnwrap(s.subjects.first)
+        a.name="Lezioni di analisi"
+        let book=Subject(name:"Libro di fisica",color:"estate.mare"), done=Subject(name:"Materia completata")
+        done.isCompleted=true; s.context.insert(book); s.context.insert(done)
+        for subject in [a,book] {
+            for i in 1...4 {
+                let unit=StudyUnit(subjectID:subject.id,title:subject.id == a.id ? "Lezione \(i)" : "Pagine \((i-1)*15+1)–\(i*15)",kind:subject.id == a.id ? .lesson : .pages,order:i,firstPage:subject.id == a.id ? nil : (i-1)*15+1,lastPage:subject.id == a.id ? nil : i*15)
+                if i<4 {
+                    unit.state=StudyUnitState.finished.rawValue
+                    let end=Calendar.current.date(byAdding:.day,value:-i,to:Date())!
+                    let session=StudySession(start:end.addingTimeInterval(-2400),end:end,duration:2400,subjectID:subject.id,subjectName:subject.name,mode:TimerMode.unit.rawValue,pause:0)
+                    session.unitID=unit.id; session.unitTitle=unit.title; session.unitFinished=true; s.context.insert(session)
+                }
+                s.context.insert(unit)
+            }
+        }
+        let exam=StudyExam(title:a.name,date:Calendar.current.date(byAdding:.day,value:27,to:Date())!,subjectID:a.id)
+        exam.requiredStudyHours=100; exam.preparationStart=Calendar.current.date(byAdding:.day,value:-10,to:Date())
+        s.context.insert(exam); XCTAssertTrue(s.save()); s.chooseMode(.unit); s.chooseSubject(a.id)
+        let unit=try XCTUnwrap(s.preparedUnit)
+        for package in ThemeRegistry.packages {
+            for mode in ThemeMode.allCases {
+                let theme=package.resolve(mode:mode)
+                func capture<V:View>(_ view:V,_ name:String,height:CGFloat=800) throws {
+                    let host=NSHostingView(rootView:view.frame(width:1100,height:height,alignment:.topLeading).environmentObject(s)
+                        .environment(\.studyTheme,theme).environment(\.colorScheme,mode == .dark ? .dark : .light)
+                        .environment(\.komorebiMotion,"Off").foregroundStyle(theme.palette.textPrimary).background(theme.palette.background)
+                        .buttonStyle(ResponsiveButtonStyle()).toggleStyle(StudyToggleStyle()).textFieldStyle(StudyTextFieldStyle()))
+                    let window=NSWindow(contentRect:CGRect(x:0,y:0,width:1100,height:height),styleMask:[.borderless],backing:.buffered,defer:false)
+                    window.contentView=host; host.frame=window.contentView!.bounds
+                    host.layoutSubtreeIfNeeded(); RunLoop.main.run(until:Date().addingTimeInterval(0.05)); host.layoutSubtreeIfNeeded()
+                    let bitmap=try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in:host.bounds)); host.cacheDisplay(in:host.bounds,to:bitmap)
+                    if let path=ProcessInfo.processInfo.environment["KOMOREBI_UNITS_REVIEW"] {
+                        let folder=URL(fileURLWithPath:path); try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
+                        try XCTUnwrap(bitmap.representation(using:.png,properties:[:])).write(to:folder.appendingPathComponent("\(name)-\(package.id)-\(mode.rawValue).png"))
+                    }
+                    window.contentView=nil
+                }
+                s.active=nil
+                try capture(OverviewView(openTimer:{},openCalendar:{},openThemeSettings:{}),"home-integrata",height:1700)
+                try capture(StatisticsView(),"statistiche-unita",height:1400)
+                try capture(HistoryView(),"cronologia-unita")
+                try capture(ProjectionCard(openCalendar:{}),"proiezione-unita",height:1050)
+                s.active=ActiveTimer(start:Date().addingTimeInterval(-1200),target:nil,subjectID:a.id,subjectName:a.name,mode:.unit,unitID:unit.id,unitTitle:unit.title,unitEstimate:40)
+                try capture(HomeView(),"timer-unita-attiva",height:1000)
+                s.active=ActiveTimer(start:Date(),pausedAt:Date(),target:480,subjectID:a.id,subjectName:a.name,mode:.unit,isBreak:true)
+                try capture(SessionControls(),"pausa-unita",height:500)
+                s.active=nil
+                let states=s.units.map { ($0,$0.state) }
+                for unit in s.units { unit.state=StudyUnitState.finished.rawValue }; XCTAssertTrue(s.save())
+                XCTAssertNil(s.preparedUnit); XCTAssertFalse(s.canStart)
+                try capture(TimerSetup(),"unita-tutte-finite",height:600)
+                for (unit,state) in states { unit.state=state }; XCTAssertTrue(s.save())
+                XCTAssertEqual(s.preparedUnit?.id,unit.id); XCTAssertTrue(s.canStart)
+            }
+        }
+    }
+}
+
+
+extension StudyUnitTests {
+    func testRecoveredUnitSegmentIsNotCountedTwice() throws {
+        let s=try store(), subject=try XCTUnwrap(s.subjects.first)
+        let unit=StudyUnit(subjectID:subject.id,title:"Unità recuperata")
+        s.context.insert(unit); XCTAssertTrue(s.save())
+        let end=Date().addingTimeInterval(-10)
+        let active=ActiveTimer(start:end.addingTimeInterval(-600),target:nil,subjectID:subject.id,subjectName:subject.name,mode:.unit,unitID:unit.id,unitTitle:unit.title)
+        s.active=active; s.finishUnit(finished:false,at:end)
+        s.active=active; s.finishUnit(finished:false,at:end)
+        XCTAssertEqual(s.sessions.count,1); XCTAssertEqual(s.sessions[0].duration,600,accuracy:0.001)
+        s.active=active; s.finishUnit(finished:true,at:end.addingTimeInterval(5))
+        XCTAssertEqual(s.sessions[0].duration,605,accuracy:0.001)
+    }
+}

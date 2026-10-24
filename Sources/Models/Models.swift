@@ -494,6 +494,16 @@ struct UnitSeed: Equatable {
     var title: String; var firstPage: Int? = nil; var lastPage: Int? = nil
 }
 enum UnitRules {
+    /// Union makes re-saving a recovered segment idempotent without dropping later resumed work.
+    static func mergedIntervals(_ input: [StudyInterval]) -> [StudyInterval] {
+        var result: [StudyInterval] = []
+        for span in input.filter({ $0.end > $0.start }).sorted(by:{ $0.start < $1.start }) {
+            if let previous = result.last, span.start <= previous.end {
+                result[result.count-1].end = max(previous.end,span.end)
+            } else { result.append(span) }
+        }
+        return result
+    }
     // Bounds prevent accidental multi-million-item allocations in a quick-create form.
     static func numbered(from: Int, through: Int, prefix: String) -> [UnitSeed] {
         guard from >= 0, through >= from, through - from < 10_000 else { return [] }
