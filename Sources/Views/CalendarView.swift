@@ -81,7 +81,7 @@ struct SessionRow: View {
     var body: some View {
         HStack(spacing: DesignSystem.Spacing.legacy14) {
             SubjectIconTile(symbol: store.subjects.first { $0.id == session.subjectID }?.icon ?? "book.closed", color: appTheme.subjectColor(store.subjects.first { $0.id == session.subjectID }?.color ?? "Salvia"))
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) { Text(session.subjectName).font(appTheme.preservedTypography.headline); Text(session.note.isEmpty ? TimerMode.displayName(for: session.timerMode) : session.note).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary).lineLimit(2) }
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) { Text(verbatim: session.subjectName).textCase(nil).font(appTheme.preservedTypography.headline); Text(session.note.isEmpty ? TimerMode.displayName(for: session.timerMode) : session.note).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary).lineLimit(2) }
             Spacer(); VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xxs) { Text(durationText(session.duration)).monospacedDigit(); Text(session.startDate, format: .dateTime.day().month().hour().minute()).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary) }
         }.padding(.vertical, DesignSystem.Spacing.xs)
     }
@@ -95,8 +95,8 @@ struct ExamRow: View {
         HStack(spacing: DesignSystem.Spacing.legacy14) {
             Image(systemName: "graduationcap").foregroundStyle(appTheme.palette.accent).font(appTheme.preservedTypography.title2)
             VStack(alignment: .leading, spacing: DesignSystem.PreservedGeometry.gap5) {
-                Text(exam.title).font(appTheme.preservedTypography.headline)
-                if let subject = store.subjects.first(where: { $0.id == exam.subjectID }) { Text(subject.name).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary) }
+                Text(verbatim: exam.title).textCase(nil).font(appTheme.preservedTypography.headline)
+                if let subject = store.subjects.first(where: { $0.id == exam.subjectID }) { Text(verbatim: subject.name).textCase(nil).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary) }
                 if !exam.note.isEmpty { Text(exam.note).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary).lineLimit(2) }
             }
             Spacer()
@@ -130,7 +130,7 @@ struct ExamEditor: View {
     var body: some View {
         Form {
             Text(exam == nil ? L10n.tr("Nuovo esame") : L10n.tr("Modifica esame")).font(appTheme.preservedTypography.editorTitle)
-            StudyTextEntry(L10n.tr("Nome esame"), text: $title).textFieldStyle(StudyTextFieldStyle()).interactiveHover(textEntry: true)
+            StudyTextEntry(L10n.tr("Nome esame"), text: $title, preserveCase: true).textFieldStyle(StudyTextFieldStyle()).interactiveHover(textEntry: true)
             StudyDropdown(title: L10n.tr("Materia"), options: subjectOptions, selection: $subjectID)
             DatePicker(L10n.tr("Data"), selection: $date, displayedComponents: .date).interactiveHover()
             Toggle(L10n.tr("Specifica un orario"), isOn: $hasTime).interactiveHover()

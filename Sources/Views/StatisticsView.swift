@@ -145,7 +145,7 @@ struct StatisticsView: View {
                     if shares.isEmpty { Text(L10n.tr("Nessun dato per materia nel periodo selezionato.")).foregroundStyle(appTheme.palette.textSecondary) }
                     ForEach(shares) { share in
                         VStack(spacing: DesignSystem.Spacing.legacy6) {
-                            HStack { Circle().fill(share.color).frame(width: DesignSystem.PreservedGeometry.points9, height: DesignSystem.PreservedGeometry.points9); Text(share.name); Spacer(); Text(durationText(share.seconds)).monospacedDigit(); Text(String(format: "%.0f%%", share.seconds / max(1, total) * 100)).foregroundStyle(appTheme.palette.textSecondary).frame(width: DesignSystem.PreservedGeometry.points45, alignment: .trailing) }
+                            HStack { Circle().fill(share.color).frame(width: DesignSystem.PreservedGeometry.points9, height: DesignSystem.PreservedGeometry.points9); Text(verbatim: share.name).textCase(nil); Spacer(); Text(durationText(share.seconds)).monospacedDigit(); Text(String(format: "%.0f%%", share.seconds / max(1, total) * 100)).foregroundStyle(appTheme.palette.textSecondary).frame(width: DesignSystem.PreservedGeometry.points45, alignment: .trailing) }
                             StudyProgressBar(value: share.seconds, total: max(1, total), color: share.color)
                         }.padding(.vertical, DesignSystem.PreservedGeometry.gap5)
                     }

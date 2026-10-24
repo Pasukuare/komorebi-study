@@ -1,9 +1,11 @@
 # Komorebi Study — passaggio di progetto
 
-Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 20** (checkpoint: pulsanti disabilitati ed editor Materie).
+Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 21** (materie completate: tutti i sette compiti implementati).
 Destinatario: sviluppatore o agente incaricato di correggere bug, verificare le prestazioni e continuare lo sviluppo.
 
-La build 20 completa i compiti 1–2 del nuovo prompt sulle Materie: pulsanti disabilitati neutri, audit contrasti, editor da 520 pt con tab in riga e corpo limitato all’80% della finestra madre. È richiesto lo stop fino a CONTINUA: compiti 3–7 (voti/date, sezioni e regole di completamento, censimento e capitalizzazione) ancora da implementare. Nessuna migrazione anticipata. Vedere `Docs/Materie-checkpoint-compiti1-2.md`.
+La build 21 completa i compiti 3–7: migrazione protetta/additiva di voto e data, due sezioni Materie, catalogo condiviso attive/completate, filtri di consultazione e nomi letterali. Il backup personale pre-intervento è in `~/Library/Application Support/Komorebi Study/Backups/Pre-completamento-20261024-094409`; la build esegue un altro backup automatico prima dell’apertura di archivi da migrare. Non è stata eseguita migrazione sull’archivio personale durante le prove. Leggere `Docs/Materie-compiti3-7.md` prima del primo avvio e per i limiti delle verifiche.
+
+La build 20 completa i compiti 1–2 del nuovo prompt sulle Materie: pulsanti disabilitati neutri, audit contrasti, editor da 520 pt con tab in riga e corpo limitato all’80% della finestra madre. Il checkpoint richiedeva lo stop; i compiti 3–7 sono stati poi autorizzati e completati nella build 21. Nessuna migrazione anticipata. Vedere `Docs/Materie-checkpoint-compiti1-2.md`.
 
 La build 19 mostra il countdown in giorni all’esame più vicino sopra la serie nella Home, rimuovendo la foglia accanto alla serie. Nessuna modifica ai dati degli esami. Vedere `Docs/Countdown-esame-build19.md`.
 

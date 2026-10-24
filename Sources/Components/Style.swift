@@ -556,7 +556,7 @@ struct Metric: View {
     @Environment(\.komorebiMotion) private var motion
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var title: String; var value: String; var icon: String
-    var body: some View { Card(stretches: true) { Label(title, systemImage: icon).foregroundStyle(appTheme.palette.textSecondary); Text(value).font(appTheme.typography.title).monospacedDigit().lineLimit(2).minimumScaleFactor(DesignSystem.PreservedGeometry.minimumScale0_8).contentTransition(.numericText()).animation(interfaceAnimation(motion, reduceMotion: reduceMotion), value: value) } }
+    var body: some View { Card(stretches: true) { Label(title, systemImage: icon).foregroundStyle(appTheme.palette.textSecondary); Text(verbatim: value).textCase(nil).font(appTheme.typography.title).monospacedDigit().lineLimit(2).minimumScaleFactor(DesignSystem.PreservedGeometry.minimumScale0_8).contentTransition(.numericText()).animation(interfaceAnimation(motion, reduceMotion: reduceMotion), value: value) } }
 }
 struct GoalBar: View {
     @Environment(\.studyTheme) private var appTheme

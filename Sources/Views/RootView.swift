@@ -325,7 +325,7 @@ struct TimerFace: View {
 
     var body: some View {
         VStack(spacing: DesignSystem.Spacing.legacy18) {
-            Text(store.active?.subjectName ?? store.preparedSubject?.name ?? L10n.tr("Studio"))
+            Text(verbatim: store.active?.subjectName ?? store.preparedSubject?.name ?? L10n.tr("Studio")).textCase(nil)
                 .font(appTheme.typography.timerSubject).lineLimit(2).multilineTextAlignment(.center)
             LiveStudyTime { date in
             let time = time(at: date)
@@ -422,7 +422,7 @@ struct CompletionView: View {
         VStack(spacing: DesignSystem.Spacing.lg) {
             Image(systemName: "leaf.fill").font(appTheme.preservedTypography.completionSymbol).foregroundStyle(appTheme.palette.accent)
             Text(L10n.tr("Sessione salvata")).font(appTheme.preservedTypography.completionTitle)
-            Text("\(session.subjectName) · \(durationText(session.duration))").font(appTheme.preservedTypography.title3)
+            Text(verbatim: session.subjectName + " · " + durationText(session.duration)).textCase(nil).font(appTheme.preservedTypography.title3)
             Text(L10n.tr("Oggi %@ · Settimana %@" , String(describing: durationText(store.liveToday)), String(describing: durationText(store.liveWeekly)))).foregroundStyle(appTheme.palette.textSecondary)
             StudyTextEntry(L10n.tr("Nota della sessione…"), text: $note, axis: .vertical).interactiveHover(textEntry: true).lineLimit(3...5).textFieldStyle(StudyTextFieldStyle())
             Button(L10n.tr("Continua")) { session.note = note; if store.save() { store.completed = nil } }.buttonStyle(ResponsiveButtonStyle(prominent: true)).keyboardShortcut(.defaultAction)
@@ -501,7 +501,7 @@ struct OverviewView: View {
     var quickStart: some View {
         Card(stretches: true) {
             SessionStatusPill()
-            Text(store.active == nil ? L10n.tr("Sessione") : store.active?.subjectName ?? L10n.tr("Sessione"))
+            Text(verbatim: store.active == nil ? L10n.tr("Sessione") : store.active?.subjectName ?? L10n.tr("Sessione")).textCase(nil)
                 .font(appTheme.preservedTypography.editorTitle).fixedSize(horizontal: false, vertical: true)
             if store.active == nil {
                 StudyDropdown(title: L10n.tr("Materia"), options: store.activeSubjectChoices, selection: Binding(get: { store.preparedSubject?.id }, set: { store.chooseSubject($0) }))
@@ -684,7 +684,7 @@ struct HomeExamCountdown: View {
             if let next = NextExamCountdown.nearest(in: exams, at: date) {
                 VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xxs) {
                     Text(next.countdownText).font(theme.typography.small).foregroundStyle(theme.palette.accent)
-                    Text(verbatim: next.title).font(theme.preservedTypography.caption)
+                    Text(verbatim: next.title).textCase(nil).font(theme.preservedTypography.caption)
                         .foregroundStyle(theme.palette.textSecondary).lineLimit(2)
                 }.multilineTextAlignment(.trailing).fixedSize(horizontal: false, vertical: true)
                     .accessibilityElement(children: .combine)
@@ -709,8 +709,14 @@ struct NoActiveSubjects: View {
             Text(L10n.tr("Nessuna materia da completare")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
             Text(L10n.tr("Aggiungi o riapri una materia per iniziare")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
             Button(L10n.tr("Aggiungi una materia")) {
+                store.focus = false
                 store.openSubjects = true
-                openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true)
+                // Reuse the main window instead of creating another one from the menu panel.
+                if let main = NSApp.mainWindow, main.canBecomeMain {
+                    if main.isMiniaturized { main.deminiaturize(nil) }
+                    main.makeKeyAndOrderFront(nil)
+                } else { openWindow(id: "main") }
+                NSApp.activate(ignoringOtherApps: true)
             }
         }
     }

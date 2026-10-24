@@ -122,10 +122,11 @@ import AppKit
     var homeExams: [StudyExam] { exams.filter { !completedSubjectIDs.contains($0.subjectID ?? Self.unassignedSubjectID) } }
     private static let unassignedSubjectID = UUID()
     var weeklyGoalProgress: Double {
+        let interval = week
         let saved = sessions.reduce(0.0) { sum, session in
-            sum + (completedSubjectIDs.contains(session.subjectID ?? Self.unassignedSubjectID) ? 0 : contribution(session, in: week))
+            sum + (completedSubjectIDs.contains(session.subjectID ?? Self.unassignedSubjectID) ? 0 : contribution(session, in: interval))
         }
-        return saved + (completedSubjectIDs.contains(active?.subjectID ?? Self.unassignedSubjectID) ? 0 : activeContribution(in: week))
+        return saved + (completedSubjectIDs.contains(active?.subjectID ?? Self.unassignedSubjectID) ? 0 : activeContribution(in: interval))
     }
     @Published var menuCompletion = false
     @Published var completionPulse: UUID?

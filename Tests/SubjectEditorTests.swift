@@ -93,6 +93,7 @@ import SwiftData
         draft.completed = true; draft.grade = " \n "
         draft.apply(to: subject)
         XCTAssertNil(subject.gradeValue)
+        try context.save() // Finish pending fixture changes before deleting its temporary SQLite files.
     }
 
     func testLegacySubjectBackupWithoutCompletionFieldsStillDecodes() throws {

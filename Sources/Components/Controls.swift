@@ -23,7 +23,7 @@ struct StudyDropdown<Value: Hashable>: View {
             } else { showing = true }
         } label: {
             HStack(spacing: DesignSystem.Spacing.xs) {
-                Text(selectedIndex.map { options[$0].1 } ?? title).lineLimit(1).truncationMode(.tail)
+                Text(verbatim: selectedIndex.map { options[$0].1 } ?? title).textCase(nil).lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: DesignSystem.Spacing.xs)
                 Image(systemName: "chevron.down").font(appTheme.typography.caption).fontWeight(appTheme.preservedTypography.lightWeight)
             }
@@ -60,7 +60,7 @@ struct StudyDropdown<Value: Hashable>: View {
                                     selection = options[index].0; showing = false
                                 } label: {
                                     HStack {
-                                        Text(options[index].1).fixedSize(horizontal: false, vertical: true)
+                                        Text(verbatim: options[index].1).textCase(nil).fixedSize(horizontal: false, vertical: true)
                                         Spacer(minLength: DesignSystem.Spacing.md)
                                         Image(systemName: "checkmark").opacity(selection == options[index].0 ? 1 : 0)
                                     }.padding(DesignSystem.Spacing.sm)
@@ -267,10 +267,14 @@ struct StudyTextEntry: View {
     let title: String
     @Binding var text: String
     var axis: Axis
-    init(_ title: String, text: Binding<String>, axis: Axis = .horizontal) {
-        self.title = title; self._text = text; self.axis = axis
+    var preserveCase: Bool
+    init(_ title: String, text: Binding<String>, axis: Axis = .horizontal, preserveCase: Bool = false) {
+        self.title = title; self._text = text; self.axis = axis; self.preserveCase = preserveCase
     }
-    var body: some View {
+    @ViewBuilder var body: some View {
+        if preserveCase { field.autocorrectionDisabled(true) } else { field }
+    }
+    private var field: some View {
         TextField(title, text: $text, prompt: appTheme.palette.placeholder == nil ? nil : Text(""), axis: axis)
             .overlay(alignment: .leading) {
                 if let ink = appTheme.palette.placeholder, text.isEmpty {

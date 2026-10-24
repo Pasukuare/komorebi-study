@@ -159,3 +159,17 @@ extension CompletedSubjectsTests {
         XCTAssertTrue(HistorySubjectSelection.legacyName("Tutte").matches(legacy))
     }
 }
+
+extension CompletedSubjectsTests {
+    func testNamesAreNeverCapitalizedInCatalogCountdownOrBackup() throws {
+        let s = try store()
+        let name = "Teoria dei Sistemi — f(x) e iOS"
+        let subject = Subject(name: name); s.context.insert(subject)
+        let exam = StudyExam(title: "esame di Teoria dei Sistemi", date: s.now.addingTimeInterval(86400), subjectID: subject.id)
+        s.context.insert(exam); XCTAssertTrue(s.save())
+        XCTAssertEqual(s.activeSubjectChoices.first { $0.0 == subject.id }?.1, name)
+        XCTAssertEqual(NextExamCountdown.nearest(in: s.homeExams, at: s.now)?.title, exam.title)
+        let copy = try JSONDecoder().decode(SubjectRecord.self, from: JSONEncoder().encode(SubjectRecord(subject)))
+        XCTAssertEqual(copy.name,name)
+    }
+}

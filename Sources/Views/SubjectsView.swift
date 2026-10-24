@@ -78,7 +78,7 @@ struct SubjectsView: View {
         return Card(identity: subject.id) {
             HStack {
                 SubjectIconTile(symbol: subject.icon, color: appTheme.subjectColor(subject.color))
-                Text(verbatim: subject.name).font(appTheme.preservedTypography.title3).foregroundStyle(appTheme.subjectColor(subject.color))
+                Text(verbatim: subject.name).textCase(nil).font(appTheme.preservedTypography.title3).foregroundStyle(appTheme.subjectColor(subject.color))
                 Spacer()
                 Button(L10n.tr("Modifica")) { editing = subject }
                 Button(L10n.tr("Elimina"), role: .destructive) { deleting = subject }.disabled(store.active?.subjectID == subject.id)
@@ -99,7 +99,7 @@ struct SubjectsView: View {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 SubjectIconTile(symbol: subject.icon, color: appTheme.subjectColor(subject.color))
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                    Text(verbatim: subject.name).font(appTheme.typography.small).lineLimit(2)
+                    Text(verbatim: subject.name).textCase(nil).font(appTheme.typography.small).lineLimit(2)
                     if let date = subject.completedAt {
                         Text(L10n.tr("Completata il %@", date.formatted(.dateTime.day().month(.abbreviated).locale(L10n.locale))))
                             .font(appTheme.typography.caption)
@@ -139,7 +139,7 @@ private struct SubjectFormFields: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 SubjectIconPicker(selection: $icon, color: appTheme.subjectColor(color))
-                StudyTextEntry(L10n.tr("Nome della materia o progetto"), text: $name).focused(nameFocused).textFieldStyle(StudyTextFieldStyle())
+                StudyTextEntry(L10n.tr("Nome della materia o progetto"), text: $name, preserveCase: true).focused(nameFocused).textFieldStyle(StudyTextFieldStyle())
             }
             HStack(spacing: DesignSystem.Spacing.md) {
                 SubjectColorPicker(selection: $color, isEditing: isEditing)
@@ -152,7 +152,7 @@ private struct SubjectFormFields: View {
             }
             HStack(spacing: DesignSystem.Spacing.sm) {
                 SubjectIconTile(symbol: icon, color: appTheme.subjectColor(color))
-                Text(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? L10n.tr("Materia") : name)
+                Text(verbatim: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? L10n.tr("Materia") : name).textCase(nil)
                     .font(appTheme.typography.heading).foregroundStyle(appTheme.subjectColor(color)).lineLimit(2)
             }.accessibilityElement(children: .combine).accessibilityLabel(L10n.tr("Anteprima della materia"))
 

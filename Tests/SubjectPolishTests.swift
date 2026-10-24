@@ -19,6 +19,7 @@ import AppKit
                     let root = view.environmentObject(store).environment(\.studyTheme, theme)
                         .environment(\.colorScheme, mode == .dark ? .dark : .light)
                         .buttonStyle(ResponsiveButtonStyle()).textFieldStyle(StudyTextFieldStyle())
+                        .foregroundStyle(theme.palette.textPrimary).background(theme.palette.background)
                     let host = NSHostingView(rootView: root)
                     let size = host.fittingSize
                     let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)

@@ -26,19 +26,19 @@ Verifica: 155 test Release, nessun errore, uno saltato. Inclusi 35 materie, ordi
 
 | Punto | File / componente | Fonte dati e ruolo |
 |---|---|---|
-| Home «Sessione» | Views/RootView.swift, OverviewView.quickStart | preparedSubject e activeSubjects; avvio studio |
-| Timer | Views/RootView.swift, TimerSetup | stesso preparedSubject/activeSubjects; configurazione studio |
+| Home «Sessione» | Views/RootView.swift, OverviewView.quickStart | preparedSubject e activeSubjectChoices; avvio studio |
+| Timer | Views/RootView.swift, TimerSetup | stesso preparedSubject/activeSubjectChoices; configurazione studio |
 | Popover barra menu | KomorebiApp.swift, MenuPanel | riusa TimerSetup e SessionControls; stesso selettore del Timer |
 | Scorciatoie Studio | KomorebiApp.swift, comandi | chiamano store.start/preparedSubject, nessun elenco separato |
 | Focus e ring | Views/RootView.swift, TimerFace/FocusView | active.subjectName o preparedSubject; nessun elenco, conserva sessione attiva |
-| Creazione esame | Views/CalendarView.swift, ExamEditor | subjectID, attualmente elenco subjects completo; da limitare nel compito 6 |
-| Modifica esame | stesso ExamEditor | subjectID già salvato; da preservare anche se completata |
+| Creazione esame | Views/CalendarView.swift, ExamEditor | subjectID e activeSubjectChoices; solo attive più opzione Nessuna materia |
+| Modifica esame | stesso ExamEditor | subjectID già salvato conservato tramite editingSubjectChoices, alternative attive |
 | Calendario mensile/dettagli/tooltip | Views/CalendarView.swift | sessions, exams, subjects per colore e nome; consultazione, nessun filtro per materia presente |
-| Prossimi esami Home | Views/RootView.swift, OverviewView.upcoming | exams >= inizio giornata; da escludere i collegamenti a completate |
-| Countdown Home | Views/RootView.swift, HomeExamCountdown/NextExamCountdown | exams, selezione data locale; stessa esclusione da applicare |
-| Cronologia filtro | Views/HistoryView.swift | nomi distinti salvati nelle sessions; da includere tutte le materie con gruppo completate, conservando i vecchi nomi non più associati |
-| Modifica sessione | Views/HistoryView.swift, SessionEditor | materia attuale da session + subjects; da limitare alle attive oltre all’attuale |
-| Statistiche filtro | Views/StatisticsView.swift | subjectID, subjects completi; da raggruppare attive/completate |
+| Prossimi esami Home | Views/RootView.swift, OverviewView.upcoming | homeExams >= inizio giornata; esclusi i collegamenti a completate |
+| Countdown Home | Views/RootView.swift, HomeExamCountdown/NextExamCountdown | homeExams, selezione data locale; stessa esclusione delle completate |
+| Cronologia filtro | Views/HistoryView.swift | historySubjectChoices, raggruppate attive/completate e vecchi nomi non più associati; filtro per ID |
+| Modifica sessione | Views/HistoryView.swift, SessionEditor | editingSubjectChoices: materia attuale più alternative attive |
+| Statistiche filtro | Views/StatisticsView.swift | subjectID e consultationSubjectChoices, raggruppate attive/completate |
 | Statistiche grafici e riepiloghi | Views/StatisticsView.swift | sessions e subjects per metadati; consultazione completa |
 | Materie | Views/SubjectsView.swift | activeSubjects/completedSubjects + subjectSummaries; gestione e consultazione |
 | Obiettivo per materia | Views/SubjectsView.swift, SubjectFormFields | campo numerico della materia nel modulo, nessun ulteriore selettore |
@@ -62,3 +62,45 @@ Home nasconde da Prossimi esami/countdown solo gli esami collegati a ID completa
 Se la selezione salvata viene completata, la preferenza viene corretta verso la prima attiva senza avvio; con zero attive preparedSubject è nil, avvio disabilitato, motivo e pulsante Aggiungi una materia presenti nei componenti condivisi. Il nuovo collegamento apre la sezione Materie anche dalla barra dei menu; nessun’altra navigazione cambia.
 
 Verifica: 157 test Release, zero errori, uno saltato. Tre materie con sessione passata, scelta attuale completata, ultima attiva completata, riapertura, filtro consultazione, editor sessioni con materia completata, esami nascosti/ripristinati e countdown verificati via sorgenti condivise e test. Non sono dichiarati provati click reali o apertura manuale di tutti i popover. La scansione SQLite pre-backup considera anche gli errori di lettura come richiesta di backup, per fallire in sicurezza anziché saltare la copia.
+
+
+## Compito 7 — nomi esatti
+
+La ricerca di capitalized/localizedCapitalized/uppercased/lowercased/textCase non ha trovato trasformazioni dei nomi nel codice preesistente. Non è quindi dimostrato che «Dei» sia una capitalizzazione automatica dell’app: titolo dell’esame e nome della materia sono due valori distinti salvati. Non sono stati riscritti titoli preesistenti o il database personale.
+
+Per rendere esplicita la regola, nomi di materie/esami, menu, righe, Focus, countdown e valori dei riepiloghi usano Text(verbatim:) e textCase(nil). I campi Nome materia/Nome esame disattivano la correzione automatica; gli altri editor mantengono il comportamento precedente. Un test conserva esattamente «Teoria dei Sistemi — f(x) e iOS» tra catalogo, countdown e backup.
+
+### Verifica finale e limiti
+
+- Suite Release: 159 test, zero errori, uno saltato perché richiede una fixture facoltativa non fornita.
+- Audit pulsanti: 360 campioni, nessun contrasto insufficiente o stato mancante. Audit localizzazione: 467 voci inglesi, 341 chiavi letterali/plurali, superato.
+- Build Xcode Release separata 1.8 (21), firma locale ad hoc e DMG verificati. Non notarizzata e non installata in Applicazioni.
+- Catture native **fuori schermo**, non uso manuale/CUA: Materie/editor e percorsi Home, Timer, barra dei menu, Calendario, Cronologia, Statistiche, modifica sessione, nuovo esame, sezioni Materie e zero attive, nelle quattro combinazioni Komorebi/Halloween chiaro/scuro. Tre materie fittizie: Teoria dei Sistemi, Misure Elettroniche (completata, voto 18, sessione passata), Tesi. Prima ricostruita dal commit db64daa/build 20 con la stessa fixture; Dopo build 21. Nessuna prova sull’archivio personale.
+- Le catture del corpo completo di Materie sono più alte di una finestra minima, per mostrare entrambe le sezioni. I test dedicati dell’editor mantengono larghezza 520 e limite dell’80% della finestra madre.
+- Apertura manuale dei dropdown, click su padding, navigazione Tab/Invio/Esc, VoiceOver, riapertura reale dopo installazione e CPU/GPU con 30+ materie **non eseguiti**. I test di dati e cache non sostituiscono queste misure. Rimane una checklist nel rapporto del checkpoint 1–2, da estendere ai tre soggetti sopra.
+- Gli avvisi Charts sugli anchor di AxisValueLabel compaiono sia nei render Prima sia Dopo; non sono crash o nuove regressioni dichiarate risolte. Gli avvisi FocusState dei render ImageRenderer restano un limite del metodo. È stato corretto anche un problema della fixture SQLite dei test (modifiche lasciate pendenti prima di eliminare Test.store), che produceva errori di teardown, non un difetto dell’archivio personale.
+- Nessun timer/animazione continua aggiunto. Cache del catalogo e riassunti di 35 materie verificati; l’intervallo settimanale del progresso viene calcolato una sola volta per valutazione. Nessuna promessa numerica su CPU o frame rate.
+
+### Risultati dei casi richiesti
+
+| Controllo | Risultato eseguito |
+|---|---|
+| Escludere completate da avvio/creazione | Test della sorgente condivisa e dei gate superati; render dei campi prodotti |
+| Materia selezionata completata → prima attiva | Superato, nessun timer avviato |
+| Ultima attiva completata → vuoto | Superato; catture Home/Timer/Menu senza attive |
+| Riapri → ritorno nelle scelte/esami | Superato sui modelli e sulle sorgenti condivise |
+| Sessione attiva completata → continua/salva | Superato con ID e collegamento invariati |
+| Modifica sessione di completata | Corrente presente, altre attive; convalida e conservazione del nome verificati dal codice e dai test |
+| Prossimi esami/countdown | Esclusione e ripristino superati; Calendario conserva gli esami |
+| Voto/data/note legacy | Migrazione da schema reale di prova, idempotenza, persistenza e backup superati |
+| Zero/una/molte completate | Casi dati, vuoti e catalogo con 35 materie verificati; render zero/una prodotti |
+| Keyboard/VoiceOver e click reali | Non eseguiti; semantica e azioni conservate nel codice |
+| Consumo CPU con 30+ materie | Non misurato; cache e assenza di ricostruzioni ripetute verificate |
+
+Opzioni non attivate: media aritmetica e nuovo popover senza freccia. La sequenza conta sette compiti, non tre/quattro come nei refusi del prompt. Tutti i sette interventi di implementazione e verifica automatica sono completati; restano le verifiche manuali esplicitamente elencate.
+
+### File e commit
+
+Compiti 1–2: df9e2a6, db64daa (rapporto separato). Compito 3: e892ebb; Compito 4: ef92462; Compito 5: feee42a; Compito 6: b98e598. Il commit del Compito 7 e il manifesto finale sono allegati nella consegna.
+
+File modificati rispetto alla build 20: Sources/Models/Models.swift; Sources/Services/StudyStore.swift; Sources/Services/BackupService.swift; Sources/Components/Controls.swift; Sources/Components/Style.swift; Sources/Views/RootView.swift; Sources/Views/SubjectsView.swift; Sources/Views/CalendarView.swift; Sources/Views/HistoryView.swift; Sources/Views/StatisticsView.swift; Sources/KomorebiApp.swift; Sources/ThemeResources/Translations.json; Tests/CompletedSubjectsTests.swift; Tests/SubjectEditorTests.swift; Tests/SubjectPolishTests.swift; Tests/SubjectWorkflowRenderTests.swift; Komorebi Study.xcodeproj/project.pbxproj; Docs/Materie-compiti3-7.md; Docs/PASSAGGIO-PROGETTO.md. FILE-MODIFICATI.json fornisce anche il confronto completo dal primo compito.

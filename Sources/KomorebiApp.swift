@@ -162,7 +162,7 @@ struct MenuPanel: View {
                 SessionStatusPill()
                 if let a = store.active {
                     VStack(alignment: .leading, spacing: DesignSystem.PreservedGeometry.gap10) {
-                        Text(a.subjectName).font(appTheme.preservedTypography.headline).fixedSize(horizontal: false, vertical: true)
+                        Text(verbatim: a.subjectName).textCase(nil).font(appTheme.preservedTypography.headline).fixedSize(horizontal: false, vertical: true)
                         LiveStudyTime { date in
                         HStack(alignment: .firstTextBaseline) {
                             if appTheme.cifreCellaFissa {
