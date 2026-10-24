@@ -21,3 +21,30 @@ Il modulo ora accetta voto vuoto o intero 18–30; la lode compare solo a 30 e n
 Transizione di opacità 250 ms al cambio di sezione, disattivata con Riduci movimento o Animazioni Off. Niente timer/animazioni continui. Riassunti di tempo/sessioni in cache, ricostruiti in un solo passaggio al cambio delle sessioni o al confine del giorno; nessun filtro per materia ripetuto in ogni card al movimento del mouse.
 
 Verifica: 155 test Release, nessun errore, uno saltato. Inclusi 35 materie, ordine e persistenza sezione, 1.000 letture del catalogo senza ricostruzioni, conservazione dei totali e aggiornamento a mezzanotte. Nessuna misura CPU o prova reale VoiceOver eseguita; non è certificato un limite numerico di consumo.
+
+## Compito 5 — censimento verificato con ricerca dei riferimenti e lettura dei componenti
+
+| Punto | File / componente | Fonte dati e ruolo |
+|---|---|---|
+| Home «Sessione» | Views/RootView.swift, OverviewView.quickStart | preparedSubject e activeSubjects; avvio studio |
+| Timer | Views/RootView.swift, TimerSetup | stesso preparedSubject/activeSubjects; configurazione studio |
+| Popover barra menu | KomorebiApp.swift, MenuPanel | riusa TimerSetup e SessionControls; stesso selettore del Timer |
+| Scorciatoie Studio | KomorebiApp.swift, comandi | chiamano store.start/preparedSubject, nessun elenco separato |
+| Focus e ring | Views/RootView.swift, TimerFace/FocusView | active.subjectName o preparedSubject; nessun elenco, conserva sessione attiva |
+| Creazione esame | Views/CalendarView.swift, ExamEditor | subjectID, attualmente elenco subjects completo; da limitare nel compito 6 |
+| Modifica esame | stesso ExamEditor | subjectID già salvato; da preservare anche se completata |
+| Calendario mensile/dettagli/tooltip | Views/CalendarView.swift | sessions, exams, subjects per colore e nome; consultazione, nessun filtro per materia presente |
+| Prossimi esami Home | Views/RootView.swift, OverviewView.upcoming | exams >= inizio giornata; da escludere i collegamenti a completate |
+| Countdown Home | Views/RootView.swift, HomeExamCountdown/NextExamCountdown | exams, selezione data locale; stessa esclusione da applicare |
+| Cronologia filtro | Views/HistoryView.swift | nomi distinti salvati nelle sessions; da includere tutte le materie con gruppo completate, conservando i vecchi nomi non più associati |
+| Modifica sessione | Views/HistoryView.swift, SessionEditor | materia attuale da session + subjects; da limitare alle attive oltre all’attuale |
+| Statistiche filtro | Views/StatisticsView.swift | subjectID, subjects completi; da raggruppare attive/completate |
+| Statistiche grafici e riepiloghi | Views/StatisticsView.swift | sessions e subjects per metadati; consultazione completa |
+| Materie | Views/SubjectsView.swift | activeSubjects/completedSubjects + subjectSummaries; gestione e consultazione |
+| Obiettivo per materia | Views/SubjectsView.swift, SubjectFormFields | campo numerico della materia nel modulo, nessun ulteriore selettore |
+| Obiettivi generali | Views/SettingsView.swift e GoalEditor | UserSettings, nessuna scelta di materia |
+| Fine sessione e nota | Views/RootView.swift, CompletionView; KomorebiApp.swift | record sessione e active, nessun nuovo selettore |
+| Backup/restore | Services/BackupService.swift | tutte le subjects/sessions/exams; da mantenere completi |
+| Fixture preview | KomorebiApp.swift, configurePreview | dati fittizi in memoria, nessuna selezione personale |
+
+Il solo componente generico per dropdown è Components/Controls.swift, StudyDropdown. Palette e icone dei moduli sono in Components/SubjectAppearance.swift e non selezionano altre materie. Nessun ulteriore Picker di materia trovato. Il censimento è di codice; non viene presentato come apertura manuale di tutti i menu.
