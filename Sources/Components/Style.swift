@@ -125,6 +125,16 @@ enum DesignSystem {
         static let toggleThumb: CGFloat = 20, toggleTrack: CGFloat = 26, toggleInset: CGFloat = 3
         static let toggleDuration: Double = 0.15
     }
+    enum SubjectEditorLayout {
+        static let minimumWidth: CGFloat = 520
+        static let windowHeightFraction: CGFloat = 0.8
+        static let padding = PreservedGeometry.gap28
+        static let scrollGutter = Spacing.lg
+        static let fallbackWindowHeight = PreservedGeometry.points650
+        static func bodyLimit(windowHeight: CGFloat, chromeHeight: CGFloat) -> CGFloat {
+            max(Interaction.controlHeight, windowHeight * windowHeightFraction - padding * 2 - Spacing.md * 2 - chromeHeight)
+        }
+    }
     enum SettingsLayout {
         static let dropdownWidth: CGFloat = 220
         static let segmentWidth: CGFloat = 260

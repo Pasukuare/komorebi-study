@@ -132,14 +132,22 @@ struct SubjectEditor: View {
     let subject: Subject
     @State private var draft: SubjectEditDraft
     @State private var saveFailed = false
+    @State private var parentHeight: CGFloat
+    @State private var measuredBody: CGFloat?
+    @State private var chromeHeight = DesignSystem.Interaction.controlHeight * 2
+    @State private var windowReady = false
 
-    init(subject: Subject) {
+    init(subject: Subject, parentHeight: CGFloat = DesignSystem.SubjectEditorLayout.fallbackWindowHeight) {
         self.subject = subject
+        _parentHeight = State(initialValue: parentHeight)
         _draft = State(initialValue: SubjectEditDraft(subject: subject))
     }
     var body: some View {
+        let bodyLimit = DesignSystem.SubjectEditorLayout.bodyLimit(windowHeight: parentHeight, chromeHeight: chromeHeight)
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             Text(L10n.tr("Modifica materia")).font(appTheme.preservedTypography.title2)
+                .background { GeometryReader { Color.clear.preference(key: SubjectEditorChromeHeight.self, value: $0.size.height) } }
+            ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                     SubjectFormFields(name: $draft.name, icon: $draft.icon, color: $draft.color,
@@ -158,7 +166,17 @@ struct SubjectEditor: View {
                             .foregroundStyle(appTheme.appearance.destructiveInk)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
-            }.frame(height: DesignSystem.PreservedGeometry.points480)
+                    .padding(.trailing, DesignSystem.SubjectEditorLayout.scrollGutter)
+                    .background { GeometryReader { Color.clear.preference(key: SubjectEditorBodyHeight.self, value: $0.size.height) } }
+                    .id("subject-form-top")
+            }.frame(height: min(measuredBody ?? bodyLimit, bodyLimit))
+                .defaultScrollAnchor(.top, for: .initialOffset)
+                .onChange(of: windowReady) {
+                    guard windowReady else { return }
+                    var transaction = Transaction(); transaction.disablesAnimations = true
+                    withTransaction(transaction) { proxy.scrollTo("subject-form-top", anchor: .top) }
+                }
+            }
             HStack {
                 Button(L10n.tr("Annulla")) { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
@@ -178,10 +196,68 @@ struct SubjectEditor: View {
                     }
                 }.buttonStyle(ResponsiveButtonStyle(prominent: true))
                     .keyboardShortcut(.defaultAction).disabled(!draft.isValid)
-            }
-        }.padding(DesignSystem.PreservedGeometry.gap28)
-            .frame(width: DesignSystem.PreservedGeometry.points480)
+            }.background { GeometryReader { Color.clear.preference(key: SubjectEditorChromeHeight.self, value: $0.size.height) } }
+        }.padding(DesignSystem.SubjectEditorLayout.padding)
+            .frame(width: DesignSystem.SubjectEditorLayout.minimumWidth)
+            .onPreferenceChange(SubjectEditorBodyHeight.self) { if $0 > 0 { measuredBody = $0 } }
+            .onPreferenceChange(SubjectEditorChromeHeight.self) { if $0 > 0 { chromeHeight = $0 } }
             .background(appTheme.palette.background)
+            .background {
+                SubjectEditorWindowMetrics { height in
+                    if parentHeight != height { parentHeight = height }
+                    if !windowReady { windowReady = true }
+                }.frame(width: 0, height: 0).allowsHitTesting(false).accessibilityHidden(true)
+            }
             .interactionHost(scope: "subject-editor")
+    }
+}
+
+
+private struct SubjectEditorBodyHeight: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+private struct SubjectEditorChromeHeight: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value += nextValue() }
+}
+
+/// Listen only to parent-window resize/presentation events; no polling or per-frame work.
+private struct SubjectEditorWindowMetrics: NSViewRepresentable {
+    let changed: (CGFloat) -> Void
+    func makeNSView(context: Context) -> Host { Host(changed: changed) }
+    func updateNSView(_ view: Host, context: Context) { view.changed = changed }
+    static func dismantleNSView(_ view: Host, coordinator: ()) { view.stop() }
+    final class Host: NSView {
+        var changed: (CGFloat) -> Void
+        private var observers: [NSObjectProtocol] = []
+        private weak var attachedSheet: NSWindow?
+        init(changed: @escaping (CGFloat) -> Void) { self.changed = changed; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow(); stop()
+            guard window != nil else { return }
+            for name in [NSWindow.didResizeNotification, NSWindow.didBecomeKeyNotification] {
+                observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.report() }
+                })
+            }
+            DispatchQueue.main.async { [weak self] in self?.report() }
+        }
+        private func report() {
+            guard let sheet = window, let parent = sheet.sheetParent else { return }
+            if attachedSheet !== sheet {
+                attachedSheet = sheet
+                sheet.initialFirstResponder = nil
+                sheet.makeFirstResponder(nil)
+            }
+            changed(parent.contentLayoutRect.height)
+        }
+        func stop() {
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers.removeAll(); attachedSheet = nil
+        }
+        deinit { observers.forEach(NotificationCenter.default.removeObserver) }
     }
 }

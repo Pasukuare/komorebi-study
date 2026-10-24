@@ -46,9 +46,9 @@ import SwiftData
                     .environment(\.studyTheme, package.resolve(mode: mode))
                 let renderer = ImageRenderer(content: editor)
                 let image = try XCTUnwrap(renderer.nsImage)
-                XCTAssertEqual(image.size.width, DesignSystem.PreservedGeometry.points480)
+                XCTAssertEqual(image.size.width, DesignSystem.SubjectEditorLayout.minimumWidth)
                 XCTAssertGreaterThan(image.size.height, 0)
-                XCTAssertLessThanOrEqual(image.size.height, DesignSystem.PreservedGeometry.points650)
+                XCTAssertLessThanOrEqual(image.size.height, DesignSystem.SubjectEditorLayout.fallbackWindowHeight * DesignSystem.SubjectEditorLayout.windowHeightFraction)
                 XCTAssertEqual(subject.name, original)
             }
         }

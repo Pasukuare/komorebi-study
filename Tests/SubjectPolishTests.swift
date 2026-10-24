@@ -16,12 +16,22 @@ import AppKit
             for mode in ThemeMode.allCases {
                 let theme = package.resolve(mode: mode)
                 func capture<V: View>(_ view: V, name: String) throws {
-                    let renderer = ImageRenderer(content: view.environmentObject(store).environment(\.studyTheme, theme)
+                    let root = view.environmentObject(store).environment(\.studyTheme, theme)
                         .environment(\.colorScheme, mode == .dark ? .dark : .light)
-                        .buttonStyle(ResponsiveButtonStyle()).textFieldStyle(StudyTextFieldStyle()))
-                    renderer.scale = 2
-                    let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(renderer.nsImage?.tiffRepresentation)))
+                        .buttonStyle(ResponsiveButtonStyle()).textFieldStyle(StudyTextFieldStyle())
+                    let host = NSHostingView(rootView: root)
+                    let size = host.fittingSize
+                    let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+                    window.contentView = host
+                    host.frame = CGRect(origin: .zero, size: size)
+                    host.layoutSubtreeIfNeeded()
+                    RunLoop.main.run(until: Date().addingTimeInterval(0.06))
+                    host.layoutSubtreeIfNeeded()
+                    let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                    host.cacheDisplay(in: host.bounds, to: bitmap)
                     try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: URL(fileURLWithPath: folder).appendingPathComponent("\(name)-\(package.id)-\(mode.rawValue).png"))
+                    window.contentView = nil
+
                 }
                 try capture(SubjectEditor(subject: subject), name: "editor")
                 try capture(SubjectsView().frame(width: 920, height: 650), name: "materie")
@@ -34,7 +44,8 @@ import AppKit
                             SidebarGhostToggle(isOpen: true, action: {})
                         }.disabled(!enabled)
                     }
-                }.padding(DesignSystem.Spacing.xl).background(theme.palette.background), name: "pulsanti")
+                }.frame(width: DesignSystem.PreservedGeometry.points650)
+                    .padding(DesignSystem.Spacing.xl).background(theme.palette.background), name: "pulsanti")
             }
         }
     }
@@ -92,6 +103,36 @@ extension SubjectPolishTests {
         }
         if let output = ProcessInfo.processInfo.environment["KOMOREBI_BUTTON_AUDIT"] {
             try (rows.joined(separator: "\n")+"\n").write(toFile: output, atomically: true, encoding: .utf8)
+        }
+    }
+}
+
+extension SubjectPolishTests {
+    func testAllFiveSeasonTabsFitOneRowAtMinimumEditorWidthInBothLanguages() throws {
+        defer { L10n.language = .italian }
+        let width = DesignSystem.SubjectEditorLayout.minimumWidth - DesignSystem.SubjectEditorLayout.padding * 2 - DesignSystem.SubjectEditorLayout.scrollGutter
+        for language in AppLanguage.allCases {
+            L10n.language = language
+            for package in ThemeRegistry.packages {
+                for mode in ThemeMode.allCases {
+                    for selected in SubjectColorGroup.allCases {
+                        let row = SubjectPaletteTabs(selection: .constant(selected)).frame(width: width)
+                            .environment(\.studyTheme, package.resolve(mode: mode))
+                        let image = try XCTUnwrap(ImageRenderer(content: row).nsImage)
+                        XCTAssertEqual(image.size.width, width)
+                        XCTAssertEqual(image.size.height, DesignSystem.Interaction.controlHeight)
+                    }
+                }
+            }
+        }
+    }
+    func testEditorChromeAndBodyFitWithinEightyPercentOfParent() throws {
+        for height in [CGFloat(650), 790, 1000] {
+            for chrome in [CGFloat(70), 100] {
+                let body = DesignSystem.SubjectEditorLayout.bodyLimit(windowHeight: height, chromeHeight: chrome)
+                let total = body + chrome + DesignSystem.SubjectEditorLayout.padding * 2 + DesignSystem.Spacing.md * 2
+                XCTAssertLessThanOrEqual(total, height * DesignSystem.SubjectEditorLayout.windowHeightFraction)
+            }
         }
     }
 }

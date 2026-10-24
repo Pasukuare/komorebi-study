@@ -165,6 +165,10 @@ struct SubjectColorPicker: View {
     var isEditing = false
     @State private var tab: SubjectColorGroup = .classics
     @State private var initialized = false
+    init(selection: Binding<String>, isEditing: Bool = false) {
+        self._selection = selection; self.isEditing = isEditing
+        _tab = State(initialValue: .initial(editing: isEditing, colorID: selection.wrappedValue, behavior: ThemeRegistry.defaultPackage.behavior))
+    }
     @FocusState private var focusedColor: String?
     private var colors: [SubjectColorChoice] { appTheme.subjectColors.filter { SubjectColorGroup.group(for: $0.id) == tab } }
     private var tabSelection: Binding<String> { Binding(get: { tab.rawValue }, set: { if let next = SubjectColorGroup(rawValue: $0) { tab = next } }) }
@@ -174,10 +178,7 @@ struct SubjectColorPicker: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: DesignSystem.Spacing.xxs) { tabs }
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) { tabs }
-            }
+            SubjectPaletteTabs(selection: $tab)
             Text(tab.paletteDescription)
                 .font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -207,22 +208,39 @@ struct SubjectColorPicker: View {
             .onChange(of: selection) { if isEditing, let group = SubjectColorGroup.group(for: selection) { tab = group } }
             .onChange(of: appTheme.package.id) { if !isEditing { resetTab() } }
     }
-    @ViewBuilder private var tabs: some View {
+}
+
+/// Both alternatives are a single row; compact tabs retain the selected label.
+struct SubjectPaletteTabs: View {
+    @Binding var selection: SubjectColorGroup
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: DesignSystem.Spacing.xxs) { tabs(compact: false) }
+            HStack(spacing: DesignSystem.Spacing.xxs) { tabs(compact: true) }
+        }
+    }
+    @ViewBuilder private func tabs(compact: Bool) -> some View {
         ForEach(SubjectColorGroup.allCases) { group in
-            ColorGroupTab(group: group, selected: group == tab) { tab = group }
+            ColorGroupTab(group: group, selected: group == selection, compact: compact) { selection = group }
         }
     }
 }
+
 private struct ColorGroupTab: View {
     @ObservedObject private var appLocalization = AppLocalization.shared
     @Environment(\.studyTheme) private var appTheme
     @FocusState private var focused: Bool
     let group: SubjectColorGroup
     let selected: Bool
+    let compact: Bool
     let action: () -> Void
     var body: some View {
         Button { focused = true; action() } label: {
-            Label(group.title, systemImage: group.symbol).font(appTheme.typography.caption)
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Image(systemName: group.symbol)
+                if !compact || selected { Text(group.title) }
+            }.font(appTheme.typography.caption).fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: DesignSystem.Interaction.controlHeight)
                 .padding(.horizontal, DesignSystem.Spacing.sm)
                 .frame(minHeight: DesignSystem.Interaction.controlHeight)
                 .foregroundStyle(selected ? appTheme.palette.onAccentSurface : appTheme.palette.textPrimary)

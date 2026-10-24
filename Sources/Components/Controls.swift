@@ -185,8 +185,8 @@ struct StudyNumberField: View {
         .background(appTheme.palette.surface, in: Capsule())
         .overlay(Capsule().stroke(appTheme.palette.controlBorder, lineWidth: DesignSystem.PreservedGeometry.stroke1).allowsHitTesting(false))
         .modifier(KeyboardFocusBorder(radius: DesignSystem.Radius.panel, explicitFocus: focus != nil))
-        .contentShape(Capsule()).interactiveHover(cornerRadius: DesignSystem.Radius.panel)
-        .opacity(enabled ? 1 : appTheme.appearance.disabledOpacity)
+        .contentShape(Capsule()).interactiveHover(cornerRadius: DesignSystem.Radius.panel, decorative: true)
+        .foregroundStyle(enabled ? appTheme.palette.textPrimary : appTheme.palette.onDisabledAction)
         .accessibilityElement(children: .contain)
     }
     private func adjustment(_ symbol: String, delta: Double) -> some View {
@@ -194,9 +194,9 @@ struct StudyNumberField: View {
             Image(systemName: symbol).font(appTheme.typography.small)
                 .frame(width: DesignSystem.Interaction.controlHeight, height: DesignSystem.Interaction.controlHeight)
                 .contentShape(Rectangle())
-        }.buttonStyle(.plain).foregroundStyle(appTheme.palette.accent)
+        }.buttonStyle(NumberAdjustmentStyle())
+            .interactiveHover(cornerRadius: DesignSystem.Radius.panel, listRow: true)
             .focusEffectDisabled().focused($focus, equals: delta < 0 ? .minus : .plus)
-            .opacity(delta < 0 && value <= range.lowerBound || delta > 0 && value >= range.upperBound ? appTheme.appearance.disabledOpacity : 1)
             .accessibilityLabel((delta > 0 ? L10n.tr("Aumenta ") : L10n.tr("Riduci ")) + title)
     }
     private func commit() {
@@ -205,6 +205,16 @@ struct StudyNumberField: View {
     private func adjust(_ delta: Double) {
         guard enabled else { return }
         value = min(range.upperBound, max(range.lowerBound, (value.isFinite ? value : range.lowerBound) + delta))
+    }
+}
+/// The pill's boundary buttons share the same neutral disabled tokens as other buttons.
+private struct NumberAdjustmentStyle: ButtonStyle {
+    @Environment(\.studyTheme) private var theme
+    @Environment(\.isEnabled) private var enabled
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(enabled ? theme.palette.accent : theme.palette.onDisabledAction)
+            .background(enabled ? .clear : theme.palette.disabledAction, in: Capsule())
     }
 }
 struct StudyToggleStyle: ToggleStyle {
