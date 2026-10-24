@@ -96,7 +96,7 @@ struct ExamRow: View {
             Image(systemName: "graduationcap").foregroundStyle(appTheme.palette.accent).font(appTheme.preservedTypography.title2)
             VStack(alignment: .leading, spacing: DesignSystem.PreservedGeometry.gap5) {
                 Text(verbatim: store.examDisplayTitle(exam)).textCase(nil).font(appTheme.preservedTypography.headline)
-                if let subject = store.subjects.first(where: { $0.id == exam.subjectID }) { Text(verbatim: subject.name).textCase(nil).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary) }
+                if let subject = store.subjects.first(where: { $0.id == exam.subjectID }), exam.displayTitle(linkedSubjectName: subject.name) != subject.name { Text(verbatim: subject.name).textCase(nil).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary) }
                 if !exam.note.isEmpty { Text(exam.note).font(appTheme.preservedTypography.caption).foregroundStyle(appTheme.palette.textSecondary).lineLimit(2) }
             }
             Spacer()
@@ -114,7 +114,8 @@ struct ExamEditor: View {
     @Environment(\.dismiss) var dismiss
     var exam: StudyExam? = nil
     var initialDate: Date
-    @State private var title = ""
+    @State private var kind = ExamKind.unspecified
+    @State private var kindDetail = ""
     @State private var date = Date()
     @State private var hasTime = false
     @State private var subjectID: UUID?
@@ -125,13 +126,31 @@ struct ExamEditor: View {
         if let id = exam?.subjectID {
             choices = store.editingSubjectChoices(currentID: id, currentName: store.subjectsByID[id]?.name ?? L10n.tr("Materia"))
         } else { choices = store.activeSubjectChoices }
-        return [(nil, L10n.tr("Nessuna materia"))] + choices
+        if exam != nil { return [(nil, L10n.tr("Nessuna materia"))] + choices }
+        return choices
     }
     var body: some View {
         Form {
             Text(exam == nil ? L10n.tr("Nuovo esame") : L10n.tr("Modifica esame")).font(appTheme.preservedTypography.editorTitle)
-            StudyTextEntry(L10n.tr("Nome esame"), text: $title, preserveCase: true).textFieldStyle(StudyTextFieldStyle()).interactiveHover(textEntry: true)
-            StudyDropdown(title: L10n.tr("Materia"), options: subjectOptions, selection: $subjectID)
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text(L10n.tr("Materia")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                StudyDropdown(title: L10n.tr("Materia"), options: subjectOptions, selection: $subjectID)
+            }
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text(L10n.tr("Tipo di prova (facoltativo)")).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                StudyDropdown(title: L10n.tr("Tipo di prova (facoltativo)"), options: ExamKind.allCases.map { ($0, $0.title) }, selection: $kind)
+            }
+            if kind == .other {
+                StudyTextEntry(L10n.tr("Descrivi il tipo di prova"), text: $kindDetail, preserveCase: true).textFieldStyle(StudyTextFieldStyle())
+            }
+            if let exam, !exam.title.isEmpty {
+                let linkedName = exam.subjectID.flatMap { store.subjectsByID[$0]?.name } ?? ""
+                if exam.title.caseInsensitiveCompare(linkedName) != .orderedSame {
+                    Text(L10n.tr("Titolo precedente: %@", exam.title)).font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
+                }
+            }
+            if subjectOptions.isEmpty { NoActiveSubjects(beforeOpen: { dismiss() }) }
+
             DatePicker(L10n.tr("Data"), selection: $date, displayedComponents: .date).interactiveHover()
             Toggle(L10n.tr("Specifica un orario"), isOn: $hasTime).interactiveHover()
             if hasTime { DatePicker(L10n.tr("Ora"), selection: $date, displayedComponents: .hourAndMinute).interactiveHover() }
@@ -142,14 +161,19 @@ struct ExamEditor: View {
                 Button(L10n.tr("Salva esame")) {
                     let model = exam ?? StudyExam(title: "", date: date)
                     if exam == nil { store.context.insert(model) }
-                    model.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if exam == nil { model.title = subjectID.flatMap { store.subjectsByID[$0]?.name } ?? "" }
+                    // Legacy custom titles remain stored; selecting a type opts into the subject-based display.
+                    if exam == nil || exam?.examKind != nil || kind != .unspecified || subjectID != exam?.subjectID {
+                        model.examKind = kind.rawValue
+                        model.examKindDetail = kind == .other ? kindDetail : nil
+                    }
                     model.date = hasTime ? date : Calendar.current.startOfDay(for: date)
                     model.hasTime = hasTime; model.subjectID = subjectID; model.note = note
                     if store.save() { dismiss() } else { store.context.rollback(); store.refresh(); saveError = L10n.tr("Impossibile salvare. Riprova.") }
-                }.buttonStyle(ResponsiveButtonStyle(prominent: true)).disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !store.subjectChoiceIsAllowed(subjectID, retaining: exam?.subjectID))
+                }.buttonStyle(ResponsiveButtonStyle(prominent: true)).disabled((exam == nil && subjectID == nil) || !store.subjectChoiceIsAllowed(subjectID, retaining: exam?.subjectID))
             }
         }.padding(DesignSystem.PreservedGeometry.gap28).frame(width: DesignSystem.PreservedGeometry.points480)
-        .onAppear { title = exam?.title ?? ""; date = exam?.date ?? initialDate; hasTime = exam?.hasTime ?? false; subjectID = exam?.subjectID; note = exam?.note ?? "" }
+        .onAppear { kind = exam?.examKind.flatMap(ExamKind.init(rawValue:)) ?? .unspecified; kindDetail = exam?.examKindDetail ?? ""; date = exam?.date ?? initialDate; hasTime = exam?.hasTime ?? false; subjectID = exam?.subjectID ?? (exam == nil ? store.activeSubjects.first?.id : nil); note = exam?.note ?? "" }
     }
 }
 

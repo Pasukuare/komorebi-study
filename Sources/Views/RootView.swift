@@ -705,11 +705,13 @@ struct NoActiveSubjects: View {
     @EnvironmentObject private var store: StudyStore
     @Environment(\.studyTheme) private var theme
     @Environment(\.openWindow) private var openWindow
+    var beforeOpen: () -> Void = {}
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
             Text(L10n.tr("Nessuna materia da completare")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
             Text(L10n.tr("Aggiungi o riapri una materia per iniziare")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
             Button(L10n.tr("Aggiungi una materia")) {
+                beforeOpen()
                 store.focus = false
                 store.openSubjects = true
                 // Reuse the main window instead of creating another one from the menu panel.

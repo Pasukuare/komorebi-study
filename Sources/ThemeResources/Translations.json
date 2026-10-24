@@ -465,5 +465,15 @@
   "Azioni della materia": "Subject actions",
   "Nessuna materia da completare": "No subjects to complete",
   "Aggiungi o riapri una materia per iniziare": "Add or reopen a subject to start",
-  "Aggiungi una materia": "Add a subject"
+  "Aggiungi una materia": "Add a subject",
+  "Non specificato": "Not specified",
+  "Scritto": "Written",
+  "Orale": "Oral",
+  "Progetto": "Project",
+  "Scritto e orale": "Written and oral",
+  "Prova pratica": "Practical assessment",
+  "Altro": "Other",
+  "Tipo di prova (facoltativo)": "Assessment type (optional)",
+  "Descrivi il tipo di prova": "Describe the assessment type",
+  "Titolo precedente: %@": "Previous title: %@"
 }

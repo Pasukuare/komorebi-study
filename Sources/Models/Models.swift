@@ -213,6 +213,21 @@ func clockText(_ seconds: Double) -> String {
     return s >= 3600 ? String(format: "%02d:%02d:%02d", s/3600, s/60%60, s%60) : String(format: "%02d:%02d", s/60, s%60)
 }
 
+enum ExamKind: String, CaseIterable, Identifiable {
+    case unspecified, written, oral, project, writtenAndOral, practical, other
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .unspecified: return L10n.tr("Non specificato")
+        case .written: return L10n.tr("Scritto")
+        case .oral: return L10n.tr("Orale")
+        case .project: return L10n.tr("Progetto")
+        case .writtenAndOral: return L10n.tr("Scritto e orale")
+        case .practical: return L10n.tr("Prova pratica")
+        case .other: return L10n.tr("Altro")
+        }
+    }
+}
 @Model final class StudyExam {
     @Attribute(.unique) var id: UUID
     var title: String
@@ -220,6 +235,8 @@ func clockText(_ seconds: Double) -> String {
     var hasTime: Bool
     var subjectID: UUID?
     var note: String
+    var examKind: String? = nil
+    var examKindDetail: String? = nil
     init(title: String, date: Date, hasTime: Bool = false, subjectID: UUID? = nil, note: String = "") {
         id = UUID(); self.title = title; self.date = date; self.hasTime = hasTime; self.subjectID = subjectID; self.note = note
     }
@@ -228,15 +245,26 @@ extension StudyExam {
     /// A subject-name alias follows the linked subject's spelling; custom exam titles stay literal.
     /// This is a display rule only: the original title and historical records are never rewritten.
     func displayTitle(linkedSubjectName: String?) -> String {
+        if examKind != nil { return linkedSubjectName ?? title }
         guard let name = linkedSubjectName, title.caseInsensitiveCompare(name) == .orderedSame else { return title }
         return name
     }
 }
+extension StudyExam {
+    var kindDescription: String? {
+        guard let raw = examKind else { return nil }
+        guard let kind = ExamKind(rawValue: raw) else { return raw }
+        if kind == .unspecified { return nil }
+        if kind == .other, let detail = examKindDetail, !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return detail }
+        return kind.title
+    }
+}
 struct ExamRecord: Codable {
     var id: UUID; var title: String; var date: Date; var hasTime: Bool; var subjectID: UUID?; var note: String
-    init(_ exam: StudyExam) { id = exam.id; title = exam.title; date = exam.date; hasTime = exam.hasTime; subjectID = exam.subjectID; note = exam.note }
+    var examKind: String? = nil; var examKindDetail: String? = nil
+    init(_ exam: StudyExam) { examKind = exam.examKind; examKindDetail = exam.examKindDetail; id = exam.id; title = exam.title; date = exam.date; hasTime = exam.hasTime; subjectID = exam.subjectID; note = exam.note }
     var model: StudyExam {
-        let exam = StudyExam(title: title, date: date, hasTime: hasTime, subjectID: subjectID, note: note); exam.id = id; return exam
+        let exam = StudyExam(title: title, date: date, hasTime: hasTime, subjectID: subjectID, note: note); exam.id = id; exam.examKind = examKind; exam.examKindDetail = examKindDetail; return exam
     }
 }
 

@@ -1,5 +1,6 @@
 import XCTest
 import SwiftUI
+import SwiftData
 @testable import KomorebiStudy
 
 @MainActor final class ExamCountdownTests: XCTestCase {
@@ -89,5 +90,76 @@ extension ExamCountdownTests {
         XCTAssertEqual(unlinked.displayTitle(linkedSubjectName: nil), unlinked.title)
         let accent = StudyExam(title: "Fisicà", date: Date())
         XCTAssertEqual(accent.displayTitle(linkedSubjectName: "Fisica"), "Fisicà")
+    }
+}
+
+extension ExamCountdownTests {
+    func testSubjectBasedExamNamesTypesAndBackupKeepOriginalMetadata() throws {
+        let store = try StudyStore(inMemory: true, defaults: UserDefaults(suiteName: "ExamKinds.\(UUID())")!)
+        let subject = Subject(name: "Teoria dei Sistemi"); store.context.insert(subject)
+        let exam = StudyExam(title: subject.name, date: Date(), subjectID: subject.id, note: "Aula Galileo Galilei")
+        exam.examKind = ExamKind.writtenAndOral.rawValue
+        store.context.insert(exam); XCTAssertTrue(store.save())
+        L10n.language = .italian
+        XCTAssertEqual(store.examDisplayTitle(exam), "Teoria dei Sistemi · Scritto e orale")
+        subject.name = "teoria dei sistemi II"; XCTAssertTrue(store.save())
+        XCTAssertEqual(store.examDisplayTitle(exam), "teoria dei sistemi II · Scritto e orale")
+        XCTAssertEqual(exam.title, "Teoria dei Sistemi")
+        let decoded = try JSONDecoder().decode(ExamRecord.self, from: JSONEncoder().encode(ExamRecord(exam))).model
+        XCTAssertEqual(decoded.examKind, ExamKind.writtenAndOral.rawValue)
+        XCTAssertEqual(decoded.note,"Aula Galileo Galilei")
+        exam.examKind = ExamKind.other.rawValue; exam.examKindDetail = "Discussione del progetto"
+        XCTAssertEqual(store.examDisplayTitle(exam), "teoria dei sistemi II · Discussione del progetto")
+        exam.examKind = ExamKind.unspecified.rawValue
+        XCTAssertEqual(store.examDisplayTitle(exam), subject.name)
+        L10n.language = .english
+        exam.examKind = ExamKind.oral.rawValue
+        XCTAssertEqual(store.examDisplayTitle(exam), "teoria dei sistemi II · Oral")
+    }
+    func testLegacyExamBackupHasNoRequiredTypeAndRetainsItsTitle() throws {
+        let exam = StudyExam(title: "Parziale di Teoria Dei Sistemi", date: Date(), note: "Note esistenti")
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(ExamRecord(exam))) as? [String:Any])
+        json.removeValue(forKey: "examKind"); json.removeValue(forKey: "examKindDetail")
+        let copy = try JSONDecoder().decode(ExamRecord.self, from: JSONSerialization.data(withJSONObject: json)).model
+        XCTAssertNil(copy.examKind); XCTAssertEqual(copy.title, exam.title); XCTAssertEqual(copy.note, exam.note)
+        XCTAssertEqual(copy.displayTitle(linkedSubjectName: "Teoria dei Sistemi"), exam.title)
+    }
+}
+
+private enum ExamV22 {
+    @Model final class StudyExam {
+        @Attribute(.unique) var id: UUID
+        var title: String; var date: Date; var hasTime: Bool; var subjectID: UUID?; var note: String
+        init(id: UUID, subject: UUID) { self.id = id; title = "Esame precedente"; date = Date(timeIntervalSince1970: 123456); hasTime = true; subjectID = subject; note = "Aula Galileo" }
+    }
+}
+extension ExamCountdownTests {
+    func testExamSchemaMigrationIsBackedUpAndKeepsAllLegacyFields() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("Study.store"), id = UUID()
+        do {
+            let schema = Schema([Subject.self, StudySession.self, ExamV22.StudyExam.self])
+            let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, url: url)])
+            let context = ModelContext(container)
+            let subject = Subject(name: "Materia"); context.insert(subject)
+            context.insert(ExamV22.StudyExam(id: id, subject: subject.id)); try context.save()
+        }
+        XCTAssertTrue(ColorIDMigrationBackup.needsExamKindBackup(url))
+        let store = try StudyStore(defaults: UserDefaults(suiteName: "ExamSchema.\(UUID())")!, archiveURL: url)
+        let exam = try XCTUnwrap(store.exams.first)
+        XCTAssertEqual(exam.id, id); XCTAssertEqual(exam.title, "Esame precedente")
+        XCTAssertEqual(exam.note, "Aula Galileo"); XCTAssertTrue(exam.hasTime)
+        XCTAssertEqual(exam.date, Date(timeIntervalSince1970: 123456)); XCTAssertNil(exam.examKind)
+        XCTAssertFalse(ColorIDMigrationBackup.needsExamKindBackup(url))
+        let backups = try FileManager.default.contentsOfDirectory(at: folder.appendingPathComponent("Backups"), includingPropertiesForKeys: nil)
+        // The generic completion-schema safety check may also conservatively back up a busy store.
+        let examBackups = backups.filter { $0.lastPathComponent.hasPrefix("ExamKinds-") }
+        XCTAssertEqual(examBackups.count, 1)
+        let beforeMigration = try XCTUnwrap(examBackups.first)
+        XCTAssertTrue(ColorIDMigrationBackup.needsExamKindBackup(beforeMigration.appendingPathComponent("Study.store")))
+        exam.examKind = ExamKind.project.rawValue; XCTAssertTrue(store.save())
+        XCTAssertEqual(ExamRecord(exam).model.examKind, ExamKind.project.rawValue)
     }
 }

@@ -120,7 +120,8 @@ import AppKit
         id == originalID || id == nil || id.map(activeSubjectIDs.contains) == true
     }
     func examDisplayTitle(_ exam: StudyExam) -> String {
-        exam.displayTitle(linkedSubjectName: exam.subjectID.flatMap { subjectsByID[$0]?.name })
+        let name = exam.displayTitle(linkedSubjectName: exam.subjectID.flatMap { subjectsByID[$0]?.name })
+        return name + (exam.kindDescription.map { " · " + $0 } ?? "")
     }
     var homeExams: [StudyExam] { exams.filter { !completedSubjectIDs.contains($0.subjectID ?? Self.unassignedSubjectID) } }
     private static let unassignedSubjectID = UUID()
@@ -206,6 +207,9 @@ import AppKit
         }
         if !inMemory, ColorIDMigrationBackup.needsCompletionBackup(configuration.url) {
             try ColorIDMigrationBackup.create(archiveURL: configuration.url, preferences: defaults.dictionaryRepresentation(), label: "SubjectCompletion")
+        }
+        if !inMemory, ColorIDMigrationBackup.needsExamKindBackup(configuration.url) {
+            try ColorIDMigrationBackup.create(archiveURL: configuration.url, preferences: defaults.dictionaryRepresentation(), label: "ExamKinds")
         }
         container = try ModelContainer(for: schema, configurations: [configuration])
         context = ModelContext(container)

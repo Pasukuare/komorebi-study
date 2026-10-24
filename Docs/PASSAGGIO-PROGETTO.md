@@ -1,7 +1,9 @@
 # Komorebi Study — passaggio di progetto
 
-Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 22** (grafia dei nomi degli esami allineata alla materia collegata).
+Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 23** (esami tramite materia e tipo di prova).
 Destinatario: sviluppatore o agente incaricato di correggere bug, verificare le prestazioni e continuare lo sviluppo.
+
+La build 23 rimuove il nome libero nel modulo esami: materia obbligatoria per i nuovi, tipo facoltativo e nome visualizzato dalla materia collegata. Aggiunti campi opzionali e backup automatico pre-schema. Titoli e note legacy conservati. Backup personale pre-intervento: `~/Library/Application Support/Komorebi Study/Backups/Pre-tipi-esame-20261024-104134`. Vedere `Docs/Tipi-esame-build23.md`.
 
 La build 22 risolve la differenza tra titolo esame «Teoria Dei Sistemi» e materia «Teoria dei Sistemi»: quando differiscono solo per maiuscole/minuscole, la visualizzazione segue la materia. Titoli distinti e dati salvati non vengono riscritti. Vedere `Docs/Nomi-esami-build22.md`.
 
