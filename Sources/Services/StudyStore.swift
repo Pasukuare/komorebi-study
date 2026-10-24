@@ -175,7 +175,7 @@ import AppKit
     }
     var actionTitle: String {
         guard let a = active else { return L10n.tr("Inizia a studiare") }
-        return a.pausedAt == nil ? L10n.tr("Sospendi") : a.isBreak ? L10n.tr("Avvia pausa") : L10n.tr("Riprendi")
+        return a.pausedAt == nil ? (a.mode == .unit && !a.isBreak ? L10n.tr("Pausa") : L10n.tr("Sospendi")) : a.isBreak ? L10n.tr("Avvia pausa") : L10n.tr("Riprendi")
     }
     var studying: Bool { active.map { !$0.isBreak && $0.pausedAt == nil } ?? false }
     var liveToday: Double { today + activeContribution(in: day) }

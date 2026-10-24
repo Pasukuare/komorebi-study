@@ -549,5 +549,17 @@
   "Pagine per blocco": "Pages per block",
   "%@ unità da creare": "%@ units to create",
   "Crea": "Create",
-  "Aggiungi un’unità prima di iniziare.": "Add a unit before starting."
+  "Aggiungi un’unità prima di iniziare.": "Add a unit before starting.",
+  "Pausa di %@": "Break: %@",
+  "Nessuna unità da studiare": "No units to study",
+  "Prossima: %@": "Next: %@",
+  "Entro la stima": "Within the estimate",
+  "Oltre la stima di %@": "Over the estimate by %@",
+  "Non ancora finita": "Not finished yet",
+  "Pause per unità": "Unit breaks",
+  "Frazione del tempo studiato": "Fraction of study time",
+  "0,2 corrisponde a 1/5 del tempo di studio.": "0.2 means one fifth of your study time.",
+  "Pausa minima": "Minimum break",
+  "Pausa massima": "Maximum break",
+  "Minuti": "Minutes"
 }

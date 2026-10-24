@@ -117,6 +117,7 @@ extension StudyUnitTests {
         let s=try store(), subject=try XCTUnwrap(s.subjects.first)
         subject.name="Teoria dei Sistemi — nome lungo della materia"
         s.addUnits(subject:subject,seeds:UnitRules.pages(from:1,through:100,block:15,prefix:"Pagine "),kind:.pages)
+        s.chooseMode(.unit)
         for package in ThemeRegistry.packages {
             for mode in ThemeMode.allCases {
                 let theme=package.resolve(mode:mode)
@@ -124,7 +125,9 @@ extension StudyUnitTests {
                 let views:[(String,AnyView)] = [
                     ("unita",AnyView(StudyUnitsSection(subject:subject,initiallyExpanded:true))),
                     ("modifica-unita",AnyView(StudyUnitEditor(subject:subject,unit:unit))),
-                    ("crea-piu-unita",AnyView(StudyUnitsBatchEditor(subject:subject)))
+                    ("crea-piu-unita",AnyView(StudyUnitsBatchEditor(subject:subject))),
+                    ("timer-per-unita",AnyView(TimerSetup())),
+                    ("home-per-unita",AnyView(OverviewView(openTimer:{},openCalendar:{},openThemeSettings:{})))
                 ]
                 for (name,view) in views {
                     let rendered=view.frame(width:760,height:780,alignment:.topLeading).padding(DesignSystem.Spacing.md)
@@ -144,5 +147,38 @@ extension StudyUnitTests {
                 }
             }
         }
+    }
+}
+
+
+extension StudyUnitTests {
+    func testStartingEmptyCompletedSubjectAndActiveUnitEdits() throws {
+        let s=try store(), subject=try XCTUnwrap(s.subjects.first)
+        s.chooseMode(.unit); XCTAssertFalse(s.canStart)
+        s.start(); XCTAssertNil(s.active)
+        s.error=nil
+        s.addUnits(subject:subject,seeds:[UnitSeed(title:"Capitolo 1")],kind:.chapter)
+        XCTAssertTrue(s.canStart)
+        let unit=try XCTUnwrap(s.preparedUnit)
+        unit.estimatedMinutes=40; XCTAssertTrue(s.save())
+        s.start(); XCTAssertNil(s.active?.target); XCTAssertEqual(s.active?.unitID,unit.id)
+        XCTAssertEqual(s.active?.unitEstimate,40); XCTAssertEqual(unit.unitState,.inProgress)
+        unit.title="Titolo modificato"; subject.isCompleted=true; XCTAssertTrue(s.save())
+        XCTAssertEqual(s.active?.unitTitle,"Capitolo 1"); XCTAssertTrue(s.activeSubjects.isEmpty)
+        s.finishUnit(finished:true)
+        XCTAssertEqual(unit.unitState,.finished); XCTAssertEqual(s.sessions.first?.unitTitle,"Capitolo 1")
+        s.skipBreak(); XCTAssertFalse(s.canStart)
+    }
+    func testUnitSettingsSanitizeAndBackupRoundTrip() throws {
+        var settings=UserSettings(); settings.unitBreakFraction=Double.nan; settings.unitBreakMinimum=10; settings.unitBreakMaximum=3
+        settings.sanitize(); XCTAssertEqual(settings.unitBreakFraction,0.2); XCTAssertEqual(settings.unitBreakMaximum,10)
+        let s=try store(), subject=try XCTUnwrap(s.subjects.first)
+        let unit=StudyUnit(subjectID:subject.id,title:"Video 1",kind:.video)
+        s.context.insert(unit); XCTAssertTrue(s.save())
+        let copy=try JSONDecoder().decode(UnitRecord.self,from:JSONEncoder().encode(UnitRecord(unit))).model
+        XCTAssertEqual(copy.id,unit.id); XCTAssertEqual(copy.title,unit.title)
+        let active=ActiveTimer(start:Date(),target:nil,subjectID:subject.id,subjectName:subject.name,mode:.unit,unitID:unit.id,unitTitle:unit.title,unitEstimate:20)
+        let restored=try JSONDecoder().decode(ActiveTimer.self,from:JSONEncoder().encode(active))
+        XCTAssertEqual(restored.unitID,unit.id); XCTAssertEqual(restored.unitEstimate,20)
     }
 }

@@ -239,16 +239,29 @@ struct SessionControls: View {
     var fromMenu = false
     var body: some View {
         VStack(spacing: DesignSystem.Spacing.legacy9) {
+            if let active = store.active, active.mode == .unit {
+                if active.isBreak {
+                    Text(L10n.tr("Pausa di %@",durationText(active.target ?? 0))).font(appTheme.typography.small)
+                    UnitSelectionView(next:true)
+                } else { LiveUnitProgress() }
+            }
             Button { store.toggle() } label: {
                 Label(store.actionTitle, systemImage: store.active != nil && store.active?.pausedAt == nil ? "pause.fill" : "play.fill")
                     .font(appTheme.typography.control)
                     .frame(maxWidth: .infinity).padding(.vertical, DesignSystem.Spacing.legacy6)
-            }.buttonStyle(StudyActionStyle()).disabled(store.active == nil && store.activeSubjects.isEmpty)
-                .help(store.active == nil && store.activeSubjects.isEmpty ? L10n.tr("Aggiungi o riapri una materia per iniziare") : store.actionTitle)
+            }.buttonStyle(StudyActionStyle()).disabled(store.active == nil && !store.canStart)
+                .help(store.active == nil && !store.canStart ? (store.activeSubjects.isEmpty ? L10n.tr("Aggiungi o riapri una materia per iniziare") : L10n.tr("Aggiungi un’unità prima di iniziare.")) : store.actionTitle)
             if let active = store.active {
+                if active.mode == .unit && !active.isBreak {
+                    HStack {
+                        Button(L10n.tr("Finita")) { store.finishUnit(finished:true) }.buttonStyle(ResponsiveButtonStyle(prominent:true))
+                        Button(L10n.tr("Non ancora finita")) { store.finishUnit(finished:false) }
+                    }
+                } else {
                 Button(active.isBreak ? L10n.tr("Salta pausa") : L10n.tr("Termina e salva")) {
                     if active.isBreak { store.skipBreak() } else { store.finish(fromMenu: fromMenu) }
                 }.frame(maxWidth: .infinity)
+                }
             }
         }
     }
@@ -273,7 +286,9 @@ struct TimerSetup: View {
                     PastelSegmentedControl(L10n.tr("Modalità"), values: TimerMode.allCases, selection: Binding(get: { store.preparedMode }, set: { store.chooseMode($0) })) { $0.displayName }
                 }
             }
-            if store.preparedMode == .pomodoro {
+            if store.preparedMode == .unit {
+                UnitSelectionView()
+            } else if store.preparedMode == .pomodoro {
                 HStack {
                     Text(L10n.tr("Studio")).foregroundStyle(appTheme.palette.textSecondary)
                     Spacer()
@@ -367,14 +382,17 @@ struct FocusView: View {
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @StateObject private var activity = FocusControlsActivity()
     @Environment(\.komorebiRendering) private var rendering
-    private enum FocusControl: Hashable { case exitTop, pause, exitBottom }
+    private enum FocusControl: Hashable { case exitTop, pause, finishUnit, saveUnit, exitBottom }
     @FocusState private var controlFocused: FocusControl?
     @FocusState private var surfaceFocused: Bool
     private var visible: Bool { activity.controlsVisible || controlFocused != nil || voiceOver }
     var body: some View {
         ZStack {
             Landscape(theme: store.settings.landscape, animations: store.settings.animations, driftingLight: true).ignoresSafeArea()
-            TimerFace(minimal: true).frame(maxWidth: DesignSystem.PreservedGeometry.points360).padding(DesignSystem.Spacing.xxl)
+            VStack(spacing:DesignSystem.Spacing.sm) {
+                TimerFace(minimal:true)
+                if store.active?.mode == .unit && store.active?.isBreak == false { LiveUnitProgress() }
+            }.frame(maxWidth:DesignSystem.PreservedGeometry.points360).padding(DesignSystem.Spacing.xxl)
             VStack {
                 HStack {
                     Spacer()
@@ -386,6 +404,10 @@ struct FocusView: View {
                 HStack(spacing: DesignSystem.Spacing.md) {
                     Button(store.actionTitle, systemImage: store.studying ? "pause.fill" : "play.fill") { store.toggle() }
                         .buttonStyle(StudyActionStyle()).focused($controlFocused, equals: .pause)
+                    if store.active?.mode == .unit && store.active?.isBreak == false {
+                        Button(L10n.tr("Finita")) { store.finishUnit(finished:true) }.focused($controlFocused,equals:.finishUnit)
+                        Button(L10n.tr("Non ancora finita")) { store.finishUnit(finished:false) }.focused($controlFocused,equals:.saveUnit)
+                    }
                     Button(L10n.tr("Esci"), action: exitFocus).focused($controlFocused, equals: .exitBottom)
                 }
             }.padding(DesignSystem.Spacing.xxl)
@@ -507,13 +529,15 @@ struct OverviewView: View {
             if store.active == nil {
                 StudyDropdown(title: L10n.tr("Materia"), options: store.activeSubjectChoices, selection: Binding(get: { store.preparedSubject?.id }, set: { store.chooseSubject($0) }))
                 if store.activeSubjects.isEmpty { NoActiveSubjects() }
+                PastelSegmentedControl(L10n.tr("Modalità"),values:TimerMode.allCases,selection:Binding(get:{ store.preparedMode },set:{ store.chooseMode($0) })) { $0.displayName }
+                if store.preparedMode == .unit { UnitSelectionView() }
                 Label(store.preparedSummary, systemImage: "timer").font(appTheme.preservedTypography.callout).foregroundStyle(appTheme.palette.textSecondary)
                 HStack {
                     Button {
                         store.start(); if store.active != nil { openTimer() }
                     } label: { Label(L10n.tr("Inizia a studiare"), systemImage: "play.fill").padding(.vertical, DesignSystem.Spacing.xxs) }
-                        .buttonStyle(StudyActionStyle()).disabled(store.activeSubjects.isEmpty)
-                        .help(store.activeSubjects.isEmpty ? L10n.tr("Aggiungi o riapri una materia per iniziare") : L10n.tr("Inizia a studiare"))
+                        .buttonStyle(StudyActionStyle()).disabled(!store.canStart)
+                        .help(!store.canStart ? (store.activeSubjects.isEmpty ? L10n.tr("Aggiungi o riapri una materia per iniziare") : L10n.tr("Aggiungi un’unità prima di iniziare.")) : L10n.tr("Inizia a studiare"))
                     Button(L10n.tr("Configura"), action: openTimer)
                 }
             } else {
@@ -722,6 +746,47 @@ struct NoActiveSubjects: View {
                 } else { openWindow(id: "main") }
                 NSApp.activate(ignoringOtherApps: true)
             }
+        }
+    }
+}
+
+
+/// One selector serves Home, Timer and the next-unit choice during the optional break.
+struct UnitSelectionView: View {
+    @EnvironmentObject private var store: StudyStore
+    @Environment(\.studyTheme) private var theme
+    var next = false
+    private var choices: [StudyUnit] { (store.preparedSubject.flatMap { store.unitsBySubject[$0.id] } ?? []).filter { $0.unitState != .finished } }
+    var body: some View {
+        VStack(alignment:.leading,spacing:DesignSystem.Spacing.xs) {
+            if choices.isEmpty {
+                Text(L10n.tr("Nessuna unità da studiare")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+                Button(L10n.tr("Aggiungi unità")) { store.openSubjects = true }
+            } else {
+                if next, let unit=store.preparedUnit { Text(L10n.tr("Prossima: %@",unit.title)).font(theme.typography.small).fixedSize(horizontal:false,vertical:true) }
+                StudyDropdown(title:L10n.tr("Unità di studio"),options:choices.map { (Optional($0.id),$0.title) },selection:Binding(get:{ store.preparedUnit?.id },set:{ store.selectedUnitID=$0 }))
+                if let unit=store.preparedUnit, let estimate=store.unitEstimates[unit.id] {
+                    Text(L10n.tr("Stima: %@",durationText(estimate*60))).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+                }
+            }
+        }
+    }
+}
+struct LiveUnitProgress: View {
+    @EnvironmentObject private var store: StudyStore
+    @Environment(\.studyTheme) private var theme
+    var body: some View {
+        if let active=store.active, active.mode == .unit, !active.isBreak {
+            VStack(alignment:.leading,spacing:DesignSystem.Spacing.xs) {
+                Text(verbatim:active.unitTitle ?? L10n.tr("Unità di studio")).font(theme.typography.small).fixedSize(horizontal:false,vertical:true)
+                if let estimate=active.unitEstimate {
+                    LiveStudyTime { date in
+                        let elapsed=(active.unitID.flatMap { store.unitSeconds[$0] } ?? 0)+active.elapsed(at:date)
+                        Text(L10n.tr("Stima: %@",durationText(estimate*60)) + " · " + (elapsed <= estimate*60 ? L10n.tr("Entro la stima") : L10n.tr("Oltre la stima di %@",durationText(elapsed-estimate*60))))
+                            .font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+                    }
+                }
+            }.frame(maxWidth:.infinity,alignment:.leading)
         }
     }
 }

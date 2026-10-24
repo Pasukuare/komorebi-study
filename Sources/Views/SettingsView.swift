@@ -65,6 +65,19 @@ struct SettingsView: View {
                     Text(L10n.tr("Le nuove durate si applicano al prossimo timer. Le pause si avviano manualmente."))
                         .font(appTheme.typography.caption).foregroundStyle(appTheme.palette.textSecondary)
                 }
+                SettingsCard(title:L10n.tr("Pause per unità")) {
+                    SettingRow(L10n.tr("Frazione del tempo studiato"),detail:L10n.tr("0,2 corrisponde a 1/5 del tempo di studio.")) {
+                        StudyNumberField(title:L10n.tr("Frazione del tempo studiato"),value:Binding(get:{ store.settings.unitBreakFraction ?? 0.2 },set:{ store.settings.unitBreakFraction=$0 }),range:0.01...1,step:0.01)
+                    }
+                    settingDivider
+                    SettingRow(L10n.tr("Pausa minima"),detail:L10n.tr("Minuti")) {
+                        StudyNumberField(title:L10n.tr("Pausa minima"),value:Binding(get:{ store.settings.unitBreakMinimum ?? 5 },set:{ store.settings.unitBreakMinimum=$0 }),range:1...180)
+                    }
+                    settingDivider
+                    SettingRow(L10n.tr("Pausa massima"),detail:L10n.tr("Minuti")) {
+                        StudyNumberField(title:L10n.tr("Pausa massima"),value:Binding(get:{ max(store.settings.unitBreakMinimum ?? 5,store.settings.unitBreakMaximum ?? 20) },set:{ store.settings.unitBreakMaximum=$0 }),range:max(1,store.settings.unitBreakMinimum ?? 5)...180)
+                    }
+                }
                 SettingsCard(title: L10n.tr("Tema")) {
                     SettingRow(L10n.tr("Modalità"), detail: L10n.tr("Aspetto chiaro, scuro o di sistema."), width: DesignSystem.SettingsLayout.segmentWidth) {
                         PastelSegmentedControl(L10n.tr("Modalità"), values: ["Light", "Dark", "System"], selection: $store.settings.appearance) { $0 == "Light" ? L10n.tr("Chiaro") : $0 == "Dark" ? L10n.tr("Scuro") : L10n.tr("Sistema") }
