@@ -341,6 +341,7 @@ struct ProjectionCard: View {
                     ProjectionTargetEditor(exam: exam, cancel: store.projections[exam.id] == nil ? nil : { editing = false }, saved: { editing = false }).id(exam.id)
                 } else if let result = store.projections[exam.id] {
                     ProjectionSummary(result: result, dailyGoal: store.settings.dailyGoal)
+                    ProjectionChart(result: result)
                 }
             } else {
                 Text(L10n.tr("Aggiungi un esame per vedere la proiezione")).foregroundStyle(theme.palette.textSecondary)
@@ -447,5 +448,154 @@ struct ProjectionSummary: View {
             Text(title).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
             Text(value).font(theme.typography.heading).monospacedDigit().lineLimit(2)
         }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+
+/// Selection is local and quantized to a calendar day. It never invalidates store aggregates.
+struct ProjectionChart: View {
+    @ObservedObject private var language = AppLocalization.shared
+    @Environment(\.studyTheme) private var theme
+    @Environment(\.komorebiMotion) private var motion
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.komorebiSectionVisible) private var visible
+    let result: StudyProjection
+    @State private var selected: Date?
+    @State private var entered = false
+    init(result: StudyProjection, initialSelection: Date? = nil) {
+        self.result = result; _selected = State(initialValue: initialSelection)
+    }
+    private var actualColor: Color { theme.subjectColor(SubjectColorID.defaultID) }
+    private var forecastColor: Color { result.status == .reached || result.status == .onTrack ? actualColor : theme.appearance.amberInk }
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            if result.studiedDays < 2 {
+                Text(L10n.tr("Servono almeno 2 giorni di studio per una proiezione affidabile"))
+                    .font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+            }
+            if result.examDate > result.asOf && result.examDate > result.preparationStart {
+                chart
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: DesignSystem.Spacing.md) { legend }
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) { legend }
+                }.font(theme.typography.caption)
+            } else {
+                Text(L10n.tr("L’esame è oggi: non ci sono altri giorni di preparazione."))
+                    .font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary)
+            }
+        }
+        .onAppear {
+            withAnimation(reduceMotion || motion == "Off" ? nil : .easeOut(duration: DesignSystem.ProjectionLayout.entryDuration)) { entered = true }
+        }
+        .onChange(of: result) { selected = nil }
+        .onChange(of: visible) { if !visible { selected = nil } }
+    }
+    private var chart: some View {
+        Chart {
+            if result.studiedDays >= 2 {
+                ForEach(result.actualPoints) { point in
+                    LineMark(x: .value(L10n.tr("Data"), point.date), y: .value(L10n.tr("Ore"), point.hours), series: .value("series", "actual"))
+                        .foregroundStyle(actualColor).lineStyle(StrokeStyle(lineWidth: DesignSystem.ProjectionLayout.stroke))
+                }
+            }
+            ForEach([ProjectionPoint(date: result.asOf, hours: result.doneHours), ProjectionPoint(date: result.examDate, hours: result.finalHours)]) { point in
+                LineMark(x: .value(L10n.tr("Data"), point.date), y: .value(L10n.tr("Ore"), point.hours), series: .value("series", "forecast"))
+                    .foregroundStyle(forecastColor).lineStyle(StrokeStyle(lineWidth: DesignSystem.ProjectionLayout.stroke, dash: DesignSystem.ProjectionLayout.dash))
+            }
+            ForEach([ProjectionPoint(date: result.preparationStart, hours: 0), ProjectionPoint(date: result.examDate, hours: result.requiredHours)]) { point in
+                LineMark(x: .value(L10n.tr("Data"), point.date), y: .value(L10n.tr("Ore"), point.hours), series: .value("series", "plan"))
+                    .foregroundStyle(theme.palette.textTertiary).lineStyle(StrokeStyle(lineWidth: DesignSystem.ProjectionLayout.planStroke))
+            }
+            PointMark(x: .value(L10n.tr("Data"), result.examDate), y: .value(L10n.tr("Ore"), result.finalHours))
+                .foregroundStyle(forecastColor).symbolSize(DesignSystem.ProjectionLayout.symbolSize)
+                .annotation(position: .bottom, alignment: .trailing) {
+                    Text(ProjectionText.number(result.finalHours) + " h").font(theme.typography.caption).foregroundStyle(theme.palette.textPrimary)
+                }
+            PointMark(x: .value(L10n.tr("Data"), result.examDate), y: .value(L10n.tr("Ore"), result.requiredHours))
+                .foregroundStyle(theme.palette.textTertiary).symbolSize(DesignSystem.ProjectionLayout.symbolSize)
+                .annotation(position: .top, alignment: .trailing) {
+                    Text(ProjectionText.number(result.requiredHours) + " h").font(theme.typography.caption).foregroundStyle(theme.palette.textPrimary)
+                }
+            RuleMark(x: .value(L10n.tr("Data"), result.asOf))
+                .foregroundStyle(theme.palette.textSecondary.opacity(theme.appearance.opacity0_35))
+                .lineStyle(StrokeStyle(lineWidth: DesignSystem.ProjectionLayout.planStroke, dash: DesignSystem.ProjectionLayout.todayDash))
+                .annotation(position: .top) { Text(L10n.tr("Oggi")).font(theme.typography.caption).foregroundStyle(theme.palette.textSecondary) }
+            if let selected {
+                RuleMark(x: .value(L10n.tr("Data"), selected)).foregroundStyle(theme.palette.border)
+            }
+        }
+        .chartXScale(domain: result.preparationStart...result.examDate)
+        .chartYAxisLabel(L10n.tr("Ore"))
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: DesignSystem.ProjectionLayout.axisTicks)) { value in
+                AxisValueLabel { if let date = value.as(Date.self) { Text(date.formatted(.dateTime.day().month(.abbreviated).locale(L10n.locale))).foregroundStyle(theme.palette.textSecondary) } }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(values: .automatic(desiredCount: DesignSystem.ProjectionLayout.axisTicks)) {
+                AxisGridLine().foregroundStyle(theme.palette.border.opacity(theme.appearance.opacity0_13))
+                AxisValueLabel().foregroundStyle(theme.palette.textSecondary)
+            }
+        }
+        .chartLegend(.hidden)
+        .chartXSelection(value: Binding(get: { selected }, set: { select($0) }))
+        .chartOverlay { proxy in
+            GeometryReader { geometry in
+                Rectangle().fill(.clear).contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        guard visible else { select(nil); return }
+                        switch phase {
+                        case .active(let point):
+                            guard let plot = proxy.plotFrame else { return }
+                            let frame = geometry[plot]
+                            select(frame.contains(point) ? proxy.value(atX: point.x-frame.minX, as: Date.self) : nil)
+                        case .ended: select(nil)
+                        }
+                    }
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            if let date = selected {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
+                    Text(L10n.date(date)).font(theme.typography.small)
+                    Text(L10n.tr("%@ h · %@", ProjectionText.number(hours(at: date)), date <= result.asOf ? L10n.tr("Fatte") : L10n.tr("Proiezione")))
+                    Text(L10n.tr("Piano: %@ h", ProjectionText.number(plan(at: date))))
+                }.font(theme.typography.caption).foregroundStyle(theme.palette.textPrimary)
+                    .padding(DesignSystem.Spacing.sm).background(theme.palette.elevatedSurface, in: RoundedRectangle(cornerRadius: DesignSystem.Radius.control))
+                    .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.control).stroke(theme.palette.border))
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(height: DesignSystem.ProjectionLayout.chartHeight)
+        .opacity(entered ? 1 : 0)
+        .focusable().focusEffectDisabled().modifier(KeyboardFocusBorder())
+        .onMoveCommand { direction in
+            if direction == .left || direction == .right {
+                select(Calendar.current.date(byAdding: .day, value: direction == .left ? -1 : 1, to: selected ?? result.asOf))
+            }
+        }
+        .accessibilityLabel(L10n.tr("Proiezione delle ore di studio"))
+        .accessibilityValue(ProjectionText.headline(result))
+        .accessibilityAdjustableAction { direction in
+            select(Calendar.current.date(byAdding: .day, value: direction == .increment ? 1 : -1, to: selected ?? result.asOf))
+        }
+    }
+    private func select(_ date: Date?) {
+        let next = date.map { min(result.examDate, max(result.preparationStart, Calendar.current.startOfDay(for: $0))) }
+        if selected != next { selected = next }
+    }
+    private func hours(at date: Date) -> Double {
+        if date <= result.asOf { return result.actualPoints.last(where: { $0.date <= date })?.hours ?? 0 }
+        return result.doneHours + result.currentPace * Double(ExamCalendarDays.remaining(until: date, from: result.asOf))
+    }
+    private func plan(at date: Date) -> Double {
+        let total = max(1, ExamCalendarDays.remaining(until: result.examDate, from: result.preparationStart))
+        let elapsed = max(0, ExamCalendarDays.remaining(until: date, from: result.preparationStart))
+        return result.requiredHours * min(1, Double(elapsed)/Double(total))
+    }
+    @ViewBuilder private var legend: some View {
+        if result.studiedDays >= 2 { Label(L10n.tr("Fatte"), systemImage: "line.diagonal").foregroundStyle(actualColor) }
+        Label(L10n.tr("Proiezione tratteggiata"), systemImage: "line.diagonal").foregroundStyle(forecastColor)
+        Label(L10n.tr("Piano"), systemImage: "line.diagonal").foregroundStyle(theme.palette.textSecondary)
     }
 }

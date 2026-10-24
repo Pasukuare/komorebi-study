@@ -1,7 +1,9 @@
 # Komorebi Study — passaggio di progetto
 
-Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 23** (esami tramite materia e tipo di prova).
+Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 24** (Proiezione delle ore di preparazione).
 Destinatario: sviluppatore o agente incaricato di correggere bug, verificare le prestazioni e continuare lo sviluppo.
+
+La build 24 aggiunge Proiezione in Home: ore necessarie esplicite, data iniziale, calcolo puro e cache, grafico Swift Charts. Nessun obiettivo inventato per gli esami esistenti. Backup pre-intervento: `~/Library/Application Support/Komorebi Study/Backups/Pre-proiezione-20261024-105508`. 174 test Release, uno saltato, zero errori; rendering nativo fuori schermo nei quattro temi/modalità, senza collaudo manuale di interazioni o prestazioni. Leggere `Docs/Proiezione-build24.md` per formule, decisioni e limiti. Distribuzione separata in `Dist/Komorebi-Proiezione-build24`; Applicazioni non modificata.
 
 La build 23 rimuove il nome libero nel modulo esami: materia obbligatoria per i nuovi, tipo facoltativo e nome visualizzato dalla materia collegata. Aggiunti campi opzionali e backup automatico pre-schema. Titoli e note legacy conservati. Backup personale pre-intervento: `~/Library/Application Support/Komorebi Study/Backups/Pre-tipi-esame-20261024-104134`. Vedere `Docs/Tipi-esame-build23.md`.
 

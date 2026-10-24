@@ -503,5 +503,12 @@
   "In linea": "On track",
   "Ritmo non sostenibile": "Unsustainable pace",
   "Esame passato": "Past exam",
-  "Indietro di %@ h sulla proiezione": "Projection is %@ h short of the target"
+  "Indietro di %@ h sulla proiezione": "Projection is %@ h short of the target",
+  "Servono almeno 2 giorni di studio per una proiezione affidabile": "At least 2 study days are needed for a reliable projection",
+  "L’esame è oggi: non ci sono altri giorni di preparazione.": "The exam is today: there are no more preparation days.",
+  "%@ h · %@": "%@ h · %@",
+  "Piano: %@ h": "Plan: %@ h",
+  "Proiezione delle ore di studio": "Study hours projection",
+  "Proiezione tratteggiata": "Dashed projection",
+  "Piano": "Plan"
 }

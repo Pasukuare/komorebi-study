@@ -126,6 +126,16 @@ enum DesignSystem {
         static let toggleThumb: CGFloat = 20, toggleTrack: CGFloat = 26, toggleInset: CGFloat = 3
         static let toggleDuration: Double = 0.15
     }
+    enum ProjectionLayout {
+        static let chartHeight: CGFloat = 220
+        static let stroke: CGFloat = 2
+        static let planStroke: CGFloat = 1
+        static let dash: [CGFloat] = [6, 4]
+        static let todayDash: [CGFloat] = [2, 3]
+        static let symbolSize: CGFloat = 20
+        static let entryDuration = 0.3
+        static let axisTicks = 4
+    }
     enum SubjectEditorLayout {
         static let minimumWidth: CGFloat = 520
         static let windowHeightFraction: CGFloat = 0.8

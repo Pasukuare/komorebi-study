@@ -1,6 +1,7 @@
 import XCTest
 import SwiftUI
 import AppKit
+import SwiftData
 @testable import KomorebiStudy
 
 @MainActor final class SubjectWorkflowRenderTests: XCTestCase {
@@ -23,6 +24,12 @@ import AppKit
         store.context.insert(StudyExam(title: b.name, date: store.now.addingTimeInterval(86400), subjectID: b.id))
         store.context.insert(StudyExam(title: a.name, date: store.now.addingTimeInterval(5*86400), subjectID: a.id))
         store.settings.lastSubject = b.id
+        if ProcessInfo.processInfo.environment["KOMOREBI_PROJECTION_HOME"] != nil {
+            let prep = Calendar.current.date(byAdding: .day, value: -10, to: store.now)!
+            for exam in try store.context.fetch(FetchDescriptor<StudyExam>()) where exam.subjectID == a.id {
+                exam.requiredStudyHours = 150; exam.preparationStart = prep
+            }
+        }
         XCTAssertTrue(store.save())
         let fixtureEncoder = JSONEncoder(); fixtureEncoder.dateEncodingStrategy = .iso8601; fixtureEncoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try fixtureEncoder.encode(Backup(settings: store.settings, subjects: store.subjects.map(SubjectRecord.init), sessions: store.sessions.map(SessionRecord.init), exams: store.exams.map(ExamRecord.init)))
@@ -47,7 +54,7 @@ import AppKit
                     try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: URL(fileURLWithPath: output).appendingPathComponent("\(name)-\(package.id)-\(mode.rawValue).png"))
                     window.contentView = nil
                 }
-                try capture(OverviewView(openTimer: {}, openCalendar: {}, openThemeSettings: {}), name: "home", height: 1000)
+                try capture(OverviewView(openTimer: {}, openCalendar: {}, openThemeSettings: {}), name: "home", height: ProcessInfo.processInfo.environment["KOMOREBI_PROJECTION_HOME"] == nil ? 1000 : 1700)
                 try capture(HomeView(), name: "timer")
                 try capture(MenuPanel(), name: "menu", width: 350)
                 try capture(CalendarView(), name: "calendario")

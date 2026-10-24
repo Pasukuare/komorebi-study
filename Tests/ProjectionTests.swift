@@ -162,3 +162,43 @@ extension ProjectionTests {
         }
     }
 }
+
+extension ProjectionTests {
+    func testDailyProjectionUsesMeasuredIntervalsPausesMidnightAndLegacyFallback() throws {
+        let midnight=calendar.startOfDay(for:today)
+        let timing=SavedStudyTiming.recorded([StudyInterval(start:midnight.addingTimeInterval(-3600),end:midnight.addingTimeInterval(-1800)), StudyInterval(start:midnight.addingTimeInterval(1800),end:midnight.addingTimeInterval(3600))])
+        let days=timing.projectionDays(from:day(-2),through:today,calendar:calendar)
+        XCTAssertEqual(days.count,2); XCTAssertEqual(days.reduce(0) { $0+$1.hours },1)
+        XCTAssertEqual(days[0].hours,0.5); XCTAssertEqual(days[1].hours,0.5)
+        XCTAssertEqual(SavedStudyTiming.proportional(start:today,end:today,duration:3600).projectionDays(from:day(-2),through:today,calendar:calendar).first?.hours,1)
+    }
+    func testProjectionStatusTextMeetsContrastInAllThemes() {
+        for package in ThemeRegistry.packages {
+            for mode in ThemeMode.allCases {
+                let t=package.resolve(mode:mode)
+                XCTAssertGreaterThanOrEqual(ThemeContrast.ratio(t.appearance.amberInk,t.palette.surface),4.5)
+                XCTAssertGreaterThanOrEqual(ThemeContrast.ratio(t.subjectColor(SubjectColorID.defaultID),t.palette.surface),4.5)
+            }
+        }
+    }
+}
+
+extension ProjectionTests {
+    func testProjectionGraphEdgeCasesRender() throws {
+        let values: [(String,StudyProjection)] = [
+            ("meno-due-giorni",try XCTUnwrap(calculate(entries:[.init(date:day(-1),hours:2)]))),
+            ("oggi",try XCTUnwrap(calculate(offset:0))),
+            ("raggiunto",try XCTUnwrap(calculate(target:10,entries:[.init(date:day(-1),hours:20)])))
+        ]
+        for package in ThemeRegistry.packages {
+            for mode in ThemeMode.allCases {
+                for (_,r) in values {
+                    let view=ProjectionChart(result:r).frame(width:600).environment(\.studyTheme,package.resolve(mode:mode)).environment(\.komorebiMotion,"Off")
+                    XCTAssertNotNil(ImageRenderer(content:view).nsImage)
+                }
+            }
+        }
+        XCTAssertEqual(values[0].1.studiedDays,1)
+        XCTAssertEqual(values[1].1.daysRemaining,0)
+    }
+}

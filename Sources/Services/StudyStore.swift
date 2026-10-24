@@ -533,13 +533,8 @@ enum SavedStudyTiming {
         var buckets: [UUID: [Date: Double]] = [:]
         for session in sessions {
             guard let id = session.subjectID, let start = earliest[id] else { continue }
-            let end = min(session.endDate, calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))!)
-            var day = calendar.startOfDay(for: max(start, session.startDate))
-            let timing = savedTiming(for: session)
-            while day < end {
-                guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
-                buckets[id, default: [:]][day, default: 0] += timing.contribution(in: DateInterval(start: day, end: min(next,end))) / 3600
-                day = next
+            for entry in savedTiming(for: session).projectionDays(from: start, through: now, calendar: calendar) {
+                buckets[id, default: [:]][entry.date, default: 0] += entry.hours
             }
         }
         var result: [UUID: StudyProjection] = [:]
@@ -550,5 +545,37 @@ enum SavedStudyTiming {
                 dailyHours: (buckets[id] ?? [:]).map { ProjectionDailyHours(date: $0.key, hours: $0.value) }, calendar: calendar)
         }
         projections = result
+    }
+}
+
+
+extension SavedStudyTiming {
+    /// Enumerate only touched days, then delegate all pause/legacy rules to contribution().
+    /// Recorded spans, rather than metadata boundaries, are the source of measured activity.
+    func projectionDays(from preparation: Date, through today: Date, calendar: Calendar) -> [ProjectionDailyHours] {
+        let lower = calendar.startOfDay(for: preparation)
+        guard let upper = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: today)) else { return [] }
+        var days = Set<Date>()
+        func cover(_ start: Date, _ end: Date) {
+            if start == end {
+                if start >= lower && start < upper { days.insert(calendar.startOfDay(for: start)) }
+                return
+            }
+            var day = calendar.startOfDay(for: max(lower,start))
+            let limit = min(upper,end)
+            while day < limit {
+                days.insert(day)
+                guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+                day = next
+            }
+        }
+        switch self {
+        case .recorded(let spans): for span in spans where span.end >= span.start { cover(span.start,span.end) }
+        case .proportional(let start, let end, _): cover(start,max(start,end))
+        }
+        return days.sorted().map { day in
+            let next = calendar.date(byAdding: .day, value: 1, to: day)!
+            return ProjectionDailyHours(date: day, hours: contribution(in: DateInterval(start: day,end: next)) / 3600)
+        }
     }
 }

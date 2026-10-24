@@ -47,3 +47,46 @@ Con ore: frase principale, Fatte/A questo ritmo/Servono, stato e ritmo richiesto
 La card Proiezione esclude il proprio spotlight, lasciando immutati gli stili delle altre card: il movimento sul futuro grafico non ridisegnerà un gradiente grande quanto la card. I controlli mantengono i loro hover/focus condivisi.
 
 Verifica Compito 3: 171 test Release, nessun errore, uno saltato. Coperti parsing vuoto/zero/non finito/virgola, dietro→in linea→raggiunto con sessioni salvate, ordine 19/27 giorni, materia completata esclusa/riaperta, 1.000 letture senza ricostruire la cache. Catture native fuori schermo della card numerica e della richiesta vuota nelle quattro combinazioni di tema/modalità. Non sono prove di click, tastiera o VoiceOver reali.
+
+## Compito 4 — grafico e verifica finale
+
+Swift Charts riusato senza dipendenze. Ore reali continue fino a oggi, proiezione tratteggiata da oggi all’esame, piano sottile da zero al totale. Etichette finali, marcatore Oggi, griglia tenue, tooltip data/ore/piano. Selezione aggiornata solo al cambio di giorno, accesso con frecce e azione regolabile di accessibilità; nessun ricalcolo degli aggregati durante hover. Ingresso con dissolvenza di 300ms, disattivata con Riduci movimento. Meno di due giornate con studio: curva reale nascosta e nota di affidabilità. Esame oggi: nessun asse futuro inventato. Linea fantasma opzionale omessa.
+
+Rafforzata l’aggregazione con giornate effettivamente toccate dagli intervalli registrati, riusando il conteggio esistente delle pause e della mezzanotte. Le sessioni già salvate oggi sono conteggiate per intero, senza troncarle all’ultimo tick visivo del timer.
+
+### Risultati
+
+| Controllo | Risultato |
+| --- | --- |
+| Suite Release | 174 test eseguiti, 1 saltato, 0 errori |
+| Caso 150/20/14h in 7 giorni/27 giorni | 74h previste, 4,8148h/giorno necessarie, 76h mancanti: conforme |
+| Nessuna sessione, ore assenti, oggi, passato, raggiunto, preparazione ieri | Test automatici superati |
+| Cambi dietro → in linea → raggiunto; esami 19/27 giorni | Test automatici superati con archivio sintetico |
+| Materia completata esclusa e riaperta; sessione corrente esclusa | Test automatici superati |
+| Cache | 1.000 letture senza ricostruzione; invalidazione su dati rilevanti |
+| Pause e attraversamento mezzanotte | Test automatici superati con intervalli sintetici |
+| Schema precedente senza campi proiezione | Migrazione SQLite temporanea e backup verificati; dati conservati |
+| Contrasto testo di stato | Almeno 4,5:1 nei quattro abbinamenti tema/modalità |
+| Card, stato ore vuote, Home, grafico corto/oggi/raggiunto | Rendering automatico nei quattro abbinamenti tema/modalità |
+| Release Xcode, firma locale, DMG | Build completata; firma verificata dallo script; checksum DMG valido |
+
+Il test saltato richiede un archivio reale opzionale: non fornito per evitare di usare dati personali. I test della migrazione sintetica sono stati eseguiti. Gli avvisi FocusState nei renderer fuori schermo non costituiscono una prova del focus reale; l’avviso Charts sull’anchor appartiene al grafico Statistiche preesistente.
+
+### Limiti e prove da completare sul Mac
+
+Le immagini sono catture native fuori schermo, non screenshot di una sessione interattiva. Prima/dopo: immagini Home della build 23 e nuova Home nelle quattro modalità, raccolte nella consegna; altezza di cattura maggiore dopo l’aggiunta della card. Non eseguiti click reali sul menu e sulla matita, hover del tooltip, Tab/frecce reali, VoiceOver, misure CPU/FPS o screenshot con finestra stretta. Verificare questi punti sulla build separata con dati di prova. Nessuna dichiarazione di fluidità o accessibilità manuale misurata. L’archivio personale non è stato aperto dalla build né migrato durante le prove.
+
+### File e commit
+
+- `Sources/Models/Models.swift`: campi opzionali, formule pure, giorni condivisi, input ore.
+- `Sources/Services/StudyStore.swift`: cache e aggregazioni dalle sessioni salvate.
+- `Sources/Services/BackupService.swift`: campi di backup e protezione pre-schema.
+- `Sources/Views/RootView.swift`: inserimento card e countdown condiviso.
+- `Sources/Views/StatisticsView.swift`: card, editor, riepilogo e grafico.
+- `Sources/Components/Style.swift`: hover opzionale e token del grafico.
+- `Sources/ThemeResources/Translations.json`: testi inglesi.
+- `Tests/ProjectionTests.swift`, `Tests/SubjectWorkflowRenderTests.swift`: calcoli, migrazione, cache e catture.
+- `Komorebi Study.xcodeproj/project.pbxproj`: build 24.
+- `Docs/Proiezione-build24.md`, `Docs/PASSAGGIO-PROGETTO.md`: censimento e consegna.
+
+Commit: Compito 1 `224f9c4`; Compito 2 `a6f6f08`; Compito 3 `2ddf668`; Compito 4 riportato in `GIT-COMMIT.txt` della consegna, per evitare riferimenti circolari al proprio hash. Sorgenti esportati dal commit finale. App in Applicazioni non sostituita.
