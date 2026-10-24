@@ -1,20 +1,25 @@
 # Komorebi Study
 
-Applicazione macOS nativa, offline, per registrare sessioni di studio. Versione 1.8, build 14, Apple Silicon, macOS 15 o successivo. Swift, SwiftUI, Swift Charts, SwiftData, UserNotifications e AVFoundation. Nessuna dipendenza esterna.
+Applicazione macOS nativa, offline, per registrare sessioni di studio. Versione 1.9, build 26, Apple Silicon, macOS 15 o successivo. Swift, SwiftUI, Swift Charts, SwiftData, UserNotifications e AVFoundation. Nessuna dipendenza esterna.
 
 ## Stato dello sviluppo
 
-Per continuare il progetto leggere [il passaggio di progetto](Docs/PASSAGGIO-PROGETTO.md) e [il rapporto della build 14](Docs/Ottimizzazione-build14-20261024.md). La suite automatica passa; fluidità, consumi e collaudo completo nell’host macOS restano da confermare. La nuova build include Italiano/Inglese, testi neutri e ottimizzazioni documentate.
+Per continuare il progetto leggere [il passaggio di progetto](Docs/PASSAGGIO-PROGETTO.md) e [il rapporto Per unità](Docs/Per-unita-build26.md). La suite automatica passa; fluidità, consumi e collaudo completo nell’host macOS restano da confermare. La nuova build include Italiano/Inglese, Proiezione, modalità Per unità e le precedenti correzioni documentate.
 
 ## Avvio
 
-Apri `Komorebi Study.dmg` e trascina **Komorebi Study** su **Applications**. Puoi anche aprire direttamente la `.app` consegnata. L'app è firmata ad hoc per uso locale: non è notarizzata da Apple e non possiede una firma Developer ID. La distribuzione pubblica con Gatekeeper richiede firma e notarizzazione con il tuo account Apple Developer. Non disabilitare Gatekeeper globalmente.
+Scarica la [release v1.9](https://github.com/Pasukuare/komorebi-study/releases/tag/v1.9). Apri il DMG e trascina **Komorebi Study** su **Applications**. Puoi anche aprire direttamente la `.app` consegnata. L'app è firmata ad hoc per uso locale: non è notarizzata da Apple e non possiede una firma Developer ID. La distribuzione pubblica con Gatekeeper richiede firma e notarizzazione con il tuo account Apple Developer. Non disabilitare Gatekeeper globalmente.
+
+Nel DMG è incluso **Primo Avvio (Sblocca).command** con LEGGIMI: verifica la firma locale, installa la copia del DMG e chiede conferma per sostituire quella precedente; rimuove solo la quarantena da questa app. macOS può bloccare anche il file `.command`: non sostituisce la notarizzazione Apple. Chiudi Komorebi prima dell’aggiornamento.
 
 Scegli l'obiettivo iniziale, seleziona una materia e premi **Inizia a studiare**. In **Materie** puoi aggiungere e modificare nome, icona, colore e obiettivo settimanale. L'ultima materia e modalità sono ricordate.
 
 ## Funzioni incluse
 
 - Pomodoro configurabile, preset 25/5, 50/10 e 90/20, pause lunghe ogni N sessioni.
+- Modalità Per unità: lezioni, capitoli, pagine, esercizi, video o titoli liberi; creazione multipla, ripresa cumulativa, stime mediane e pause proporzionali.
+- Proiezione per esame con ore necessarie esplicite, inizio anche futuro e grafico di studio/piano/previsione.
+- Materie completate, voto e data facoltativi, conservazione delle sessioni passate.
 - Cronometro libero e conto alla rovescia personalizzato, espresso in minuti (120 = 2 ore), con pausa facoltativa.
 - Pausa, ripresa, salvataggio automatico e recupero della sessione attiva dopo il riavvio dell'app.
 - Archivio SwiftData locale, note, modifica e cancellazione delle sessioni.
@@ -36,11 +41,11 @@ L'interfaccia si aggiorna ogni secondo, ma il tempo deriva dalle date di inizio,
 
 Le pause Pomodoro vengono preparate in pausa e avviate con **Riprendi**. Al termine di una pausa, la nuova sessione richiede **Avvia**. Questo evita cicli automatici e ore di studio inventate quando sei lontano. Lo stop salva anche una sessione parziale. Il numero dei Pomodoro completati è conservato fra riaperture e determina la pausa lunga.
 
-Le statistiche principali includono le sessioni terminate: il tempo ancora in corso è indicato separatamente. Le sessioni a cavallo della mezzanotte vengono ripartite proporzionalmente alla loro sovrapposizione con i giorni; la posizione esatta delle singole pause non è ricostruita. Le statistiche usano calendario e fuso orario attuali del Mac. Il confronto settimanale indica esplicitamente che la settimana corrente è ancora parziale.
+Le statistiche principali includono le sessioni terminate: il tempo ancora in corso è indicato separatamente. Le sessioni recenti conservano gli intervalli effettivamente studiati, escludendo le pause anche a cavallo della mezzanotte. Le sessioni precedenti senza intervalli e quelle modificate manualmente usano la ripartizione proporzionale esistente. Le statistiche usano calendario e fuso orario attuali del Mac. Il confronto settimanale indica esplicitamente che la settimana corrente è ancora parziale.
 
 ## Dati e backup
 
-L'archivio si trova in `~/Library/Application Support/Komorebi Study/Study.store`, con i relativi file di SQLite. Impostazioni e timer di recupero sono nelle preferenze del bundle `com.komorebi.study`. Il backup JSON esporta sessioni, materie e impostazioni, ma non il timer in corso. Termina il timer prima del backup completo.
+L'archivio si trova in `~/Library/Application Support/Komorebi Study/Study.store`, con i relativi file di SQLite. Impostazioni e timer di recupero sono nelle preferenze del bundle `com.komorebi.study`. Il backup JSON esporta sessioni, materie, esami, unità e impostazioni, ma non il timer in corso. Termina il timer prima del backup completo.
 
 L'importazione **unisce** i dati: aggiunge gli ID mancanti, mantiene i record esistenti e sostituisce le impostazioni. Non ripristina una versione precedente di una sessione già presente con lo stesso ID. L'eliminazione di una materia conserva nome e statistiche delle sessioni passate. Esporta un backup prima di cancellazioni importanti.
 

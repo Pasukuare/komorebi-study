@@ -14,5 +14,6 @@ trap 'rm -rf "$STAGING_DIR"' EXIT
 ln -s /Applications "$STAGING_DIR/Applications"
 cp "$PROJECT_ROOT/Scripts/Primo Avvio (Sblocca).command" "$STAGING_DIR/Primo Avvio (Sblocca).command"
 chmod +x "$STAGING_DIR/Primo Avvio (Sblocca).command"
+cp "$PROJECT_ROOT/Scripts/LEGGIMI-Primo-Avvio.txt" "$STAGING_DIR/LEGGIMI-Primo-Avvio.txt"
 /usr/bin/hdiutil create -volname 'Komorebi Study' -srcfolder "$STAGING_DIR" -ov -format UDZO "$DESTINATION/Komorebi Study.dmg"
 /usr/bin/hdiutil verify "$DESTINATION/Komorebi Study.dmg"

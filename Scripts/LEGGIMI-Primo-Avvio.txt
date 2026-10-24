@@ -1,0 +1,20 @@
+Komorebi Study — primo avvio
+
+1. Scarica il DMG dalla release ufficiale del progetto.
+2. Chiudi la versione eventualmente già aperta di Komorebi.
+3. Puoi trascinare Komorebi Study.app in Applications e aprirla con Finder.
+   In alternativa, fai doppio clic su Primo Avvio (Sblocca).command nel DMG:
+   il Terminale installa la copia di questo DMG e chiede conferma per sostituire
+   una versione precedente. L'archivio di studio non viene modificato dallo script.
+4. Lo script verifica l'integrità della firma locale e rimuove solamente
+   com.apple.quarantine dalla copia dell'app. Non richiede sudo e non cambia
+   altre app, cache o impostazioni di sicurezza di macOS.
+
+La firma è locale: la build non è notarizzata da Apple. macOS può bloccare
+anche il file .command. In quel caso, usa le opzioni di apertura offerte da
+Finder / Impostazioni di Sistema > Privacy e sicurezza per il file scaricato
+che hai verificato. Non è garantita l'apertura senza avvisi su ogni Mac.
+
+Se compare l'icona vecchia: chiudi e riapri Komorebi. Se era fissata nel Dock,
+rimuovi solo quella voce e aggiungi la copia presente in Applicazioni.
+Non è necessario cancellare cache di sistema generiche.

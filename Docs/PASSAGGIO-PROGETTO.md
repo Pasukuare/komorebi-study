@@ -3,6 +3,8 @@
 Aggiornato: **24 ottobre 2026**, dopo la consegna **Release build 26** (modalità Per unità).
 Destinatario: sviluppatore o agente incaricato di correggere bug, verificare le prestazioni e continuare lo sviluppo.
 
+Distribuzione **v1.9 / build 26**: script di primo avvio corretto per installare la copia del DMG anche quando esiste una versione precedente (con conferma), preflight firma/bundle, rimozione della sola quarantena e gestione degli errori. Nessuna installazione eseguita dall’agente. Vedere `Docs/Distribuzione-v1.9.md`; release prevista su GitHub `v1.9` senza riscrivere `v1.8`.
+
 La build 26 aggiunge unità generiche per materia, creazione numerica/pagine, stime mediane, sessione cumulativa, pausa frazionale e integrazione in Cronologia/Statistiche/Proiezione. Default pause proposti dall’utente: 1/5, minimo 5, massimo 20 minuti. Prima di aprire un archivio precedente viene creato un backup SQLite `Backups/StudyUnits-<data>-<UUID>`. Dati precedenti senza unità e note libere invariati. 188 test Release, uno saltato, zero errori; nessun collaudo manuale né promessa di CPU/FPS. Vedere `Docs/Per-unita-build26.md`. Distribuzione separata in `Dist/Komorebi-Per-Unita-build26`.
 
 La build 25 corregge la data di inizio della Proiezione: ammette giorni futuri fino alla vigilia dell’esame e calcola il ritmo necessario sui giorni effettivamente disponibili. Nessuna migrazione. Vedere `Docs/Proiezione-inizio-futuro-build25.md`.
